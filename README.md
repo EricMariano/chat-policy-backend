@@ -33,7 +33,7 @@ Este projeto expoe uma API REST (NestJS) que:
 
 O fluxo e dividido em dois recursos principais:
 
-- Indexacao: `POST /documents` (texto em JSON) e `POST /documents/upload` (PDF ou texto em multipart)
+- Indexacao: `POST /documents/upload` (PDF ou texto em multipart)
 - Perguntas: `POST /chat` (embed da pergunta + busca no Pinecone + geracao no OpenAI)
 
 O endpoint `GET /api` serve o Swagger UI com base nos DTOs do projeto.
@@ -121,39 +121,6 @@ Notas de RAG:
 - Se nao houver trechos apos o filtro (ou se nao houver `metadata.text`), retorna mensagem de nao encontrado e `sources: []`.
 - `conversationId` existe no DTO, mas nao e utilizado no `ChatService` atual (reservado para historico futuro).
 
-#### `POST /documents`
-
-Descricao: indexa um documento fornecido como texto (nao faz upload de arquivo).
-
-Request (JSON, `application/json`):
-
-```json
-{
-  "title": "Polity/Politica - exemplo",
-  "sourceLink": "https://exemplo.com/documentos/...",
-  "text": "conteudo do documento",
-  "fileName": "opcional",
-  "createdById": "opcional"
-}
-```
-
-Response (`200`):
-
-Retorna o objeto `doc` criado no `DocumentsService` (metadados persistidos via `metadata` dos chunks no Pinecone):
-
-```json
-{
-  "id": "uuid",
-  "title": "string",
-  "sourceLink": "string",
-  "fileName": null,
-  "status": "active",
-  "createdById": null,
-  "createdAt": "ISO_DATE_STRING",
-  "updatedAt": "ISO_DATE_STRING"
-}
-```
-
 #### `POST /documents/upload`
 
 Descricao: indexa um arquivo (PDF ou texto) via `multipart/form-data`.
@@ -173,11 +140,24 @@ Validacoes:
 
 Response (`200`):
 
-Mesma estrutura do `POST /documents` (retorna o objeto `doc` criado no `DocumentsService`).
+Retorna o objeto `doc` criado no `DocumentsService` (metadados persistidos via `metadata` dos chunks no Pinecone):
+
+```json
+{
+  "id": "uuid",
+  "title": "string",
+  "sourceLink": "string",
+  "fileName": null,
+  "status": "active",
+  "createdById": null,
+  "createdAt": "ISO_DATE_STRING",
+  "updatedAt": "ISO_DATE_STRING"
+}
+```
 
 ### Fluxos
 
-#### Fluxo de indexacao (texto e/ou upload)
+#### Fluxo de indexacao (upload)
 
 ```mermaid
 graph LR
@@ -186,11 +166,6 @@ Upload --> Extract[extractTextFromFile]
 Extract --> Chunk[chunkText]
 Chunk --> EmbedMany[EmbeddingService.embedMany]
 EmbedMany --> Upsert[PineconeService.upsert]
-
-Client -->|POST /documents| Create[DocumentsController.create]
-Create --> Chunk
-Create --> EmbedMany
-Create --> Upsert
 ```
 
 Extracao de texto:
@@ -260,14 +235,13 @@ Fontes retornadas:
 
 ### What the API does
 
-- Index policies: `POST /documents` (JSON with `text`) and `POST /documents/upload` (multipart PDF or plain text) -> extract -> chunk -> embed -> Pinecone upsert.
+- Index policies: `POST /documents/upload` (multipart PDF or plain text) -> extract -> chunk -> embed -> Pinecone upsert.
 - Ask policy questions: `POST /chat` -> embed question -> Pinecone topK search with metadata -> filter by `score >= 0.5` -> build context + sources -> call OpenAI chat completions (`gpt-4o-mini`).
 
 ### Endpoints quick reference
 
 - `GET /` -> `"Hello World!"`
 - `POST /chat` -> `{ "question": "string", "conversationId": "optional" }`
-- `POST /documents` -> `{ "title", "sourceLink", "text", "fileName"?, "createdById"? }`
 - `POST /documents/upload` -> `file` (PDF or text/plain, <= 10MB), plus `title`, `sourceLink`, `createdById`?
 
 ### Environment variables

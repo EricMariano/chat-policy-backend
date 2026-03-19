@@ -12,7 +12,6 @@ import {
   MaxFileSizeValidator,
   ParseFilePipe,
 } from '@nestjs/common';
-import { CreateDocumentDto } from './dto/create-document.dto';
 import type { UploadDocumentDto } from './dto/upload-document.dto';
 import { UploadDocumentRequestDto } from './dto/upload-document-request.dto';
 import { DocumentsService } from './documents.service';
@@ -23,11 +22,6 @@ const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
 @Controller('documents')
 export class DocumentsController {
   constructor(private readonly documents: DocumentsService) {}
-
-  @Post()
-  async create(@Body() dto: CreateDocumentDto) {
-    return this.documents.createDocument(dto);
-  }
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))

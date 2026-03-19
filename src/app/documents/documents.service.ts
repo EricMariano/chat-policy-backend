@@ -3,7 +3,6 @@ import { EmbeddingService } from '../embedding/embedding.service';
 import { PineconeService } from '../pinecone/pinecone.service';
 import { chunkText } from './chunking.util';
 import { extractTextFromFile } from './document-upload.util';
-import type { CreateDocumentDto } from './dto/create-document.dto';
 import type { UploadDocumentDto } from './dto/upload-document.dto';
 import { randomUUID } from 'crypto';
 
@@ -26,23 +25,29 @@ export class DocumentsService {
     return trimmed.length === 0 ? null : trimmed;
   }
 
-  async createDocument(dto: CreateDocumentDto) {
-    const createdById = this.normalizeOptionalId(dto.createdById);
+  private async indexDocumentFromText(params: {
+    title: string;
+    sourceLink: string;
+    text: string;
+    fileName?: string;
+    createdById?: string;
+  }) {
+    const createdById = this.normalizeOptionalId(params.createdById);
 
     // Without Prisma, we generate a new document id and persist metadata inside Pinecone.
     const docId = randomUUID();
     const doc = {
       id: docId,
-      title: dto.title,
-      sourceLink: dto.sourceLink,
-      fileName: dto.fileName ?? null,
+      title: params.title,
+      sourceLink: params.sourceLink,
+      fileName: params.fileName ?? null,
       status: 'active',
       createdById,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
-    const chunks = chunkText(dto.text);
+    const chunks = chunkText(params.text);
     if (chunks.length === 0) {
       return doc;
     }
@@ -55,8 +60,8 @@ export class DocumentsService {
         documentId: doc.id,
         chunkIndex: i,
         text: chunks[i],
-        title: dto.title,
-        sourceLink: dto.sourceLink,
+        title: params.title,
+        sourceLink: params.sourceLink,
       },
     }));
 
@@ -76,7 +81,7 @@ export class DocumentsService {
         'No text could be extracted from the file. Ensure the PDF contains selectable text or upload a non-empty .txt file.',
       );
     }
-    return this.createDocument({
+    return this.indexDocumentFromText({
       title: dto.title,
       sourceLink: dto.sourceLink,
       text,
