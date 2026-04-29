@@ -1,10 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { EmbeddingService } from '../embedding/embedding.service';
-import { PineconeService } from '../pinecone/pinecone.service';
-import { chunkText } from './chunking.util';
-import { extractTextFromFile } from './document-upload.util';
-import type { UploadDocumentDto } from './dto/upload-document.dto';
-import { randomUUID } from 'crypto';
+import { Injectable } from '@nestjs/common';
+import { randomUUID, createHash } from 'crypto';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateDocumentDto } from './dto/create-document-request.dto';
+import { ServiceData } from '../types/general';
+import { createPath, saveFile } from './document.util';
+import { QueueService } from '../queue/queue.service';
 
 export interface UploadedFile {
   buffer: Buffer;
@@ -15,78 +15,90 @@ export interface UploadedFile {
 @Injectable()
 export class DocumentsService {
   constructor(
-    private readonly embedding: EmbeddingService,
-    private readonly pinecone: PineconeService,
+    private readonly prisma: PrismaService,
+    private readonly queue: QueueService
   ) {}
 
-  private normalizeOptionalId(id?: string): string | null {
-    if (!id) return null;
-    const trimmed = id.trim();
-    return trimmed.length === 0 ? null : trimmed;
+  private generateFileHash(bufferFile: Buffer): string {
+    const hash = createHash('sha256');
+    hash.update(bufferFile);
+    return hash.digest('hex');
   }
 
-  private async indexDocumentFromText(params: {
-    title: string;
-    sourceLink: string;
-    text: string;
-    fileName?: string;
-    createdById?: string;
-  }) {
-    const createdById = this.normalizeOptionalId(params.createdById);
+  async createDocument (file: UploadedFile, body:ServiceData<CreateDocumentDto>) {
+    const fileHash = this.generateFileHash(file.buffer);
+    const documentId = randomUUID();
+    const documentVersionId = randomUUID();
+    const version = "1.0";
 
-    // Without Prisma, we generate a new document id and persist metadata inside Pinecone.
-    const docId = randomUUID();
-    const doc = {
-      id: docId,
-      title: params.title,
-      sourceLink: params.sourceLink,
-      fileName: params.fileName ?? null,
-      status: 'active',
-      createdById,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    const chunks = chunkText(params.text);
-    if (chunks.length === 0) {
-      return doc;
-    }
-
-    const embeddings = await this.embedding.embedMany(chunks);
-    const records = embeddings.map((values, i) => ({
-      id: `${doc.id}-${i}`,
-      values,
-      metadata: {
-        documentId: doc.id,
-        chunkIndex: i,
-        text: chunks[i],
-        title: params.title,
-        sourceLink: params.sourceLink,
-      },
-    }));
-
-    await this.pinecone.upsert({ records });
-
-    return doc;
-  }
-
-  async createDocumentFromFile(file: UploadedFile, dto: UploadDocumentDto) {
-    const text = await extractTextFromFile(
-      file.buffer,
-      file.mimetype,
+    const documentPath = createPath(
+      documentId,
       file.originalname,
+      file.mimetype
     );
-    if (!text) {
-      throw new BadRequestException(
-        'No text could be extracted from the file. Ensure the PDF contains selectable text or upload a non-empty .txt file.',
-      );
-    }
-    return this.indexDocumentFromText({
-      title: dto.title,
-      sourceLink: dto.sourceLink,
-      text,
-      fileName: file.originalname,
-      createdById: dto.createdById,
+
+    const existDocument = await this.prisma.document.findFirst({
+      where: {
+        title: body.bodyData.title
+      }
     });
+
+    if (existDocument) {
+      throw new Error('Document already exists');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const document = await tx.document.create({
+        data: {
+          documentId,
+          title: body.bodyData.title,
+          autorId: body.userId,
+          active: true,
+          lastVersionId: documentVersionId,
+          documentSystems: {
+            create: body.bodyData.systemIds?.map(systemId => ({
+              systemId
+            })) || []
+          },
+          documentDepartments: {
+            create: body.bodyData.departmentIds?.map(departmentId => ({
+              departmentId
+            })) || []
+          }
+        }
+      });
+
+      const documentVersion = await tx.documentVersion.create({
+        data: {
+          documentVersionId,
+          documentId,
+          version,
+          hash: fileHash,
+          documentPath,
+          autorId: body.userId,
+          status:"PROCESSING",
+          active: true
+        }
+      });
+
+      await saveFile(documentPath, file.buffer);
+
+      await tx.document.update({
+        where: {
+          documentId
+        },
+        data: {
+          lastVersionId: documentVersionId
+        }
+      });
+
+      return { document, documentVersion };
+    });
+
+    await this.queue.addProcessDocumentJob({
+      documentVersionId: documentVersionId
+    });
+
+    return result;
   }
 }

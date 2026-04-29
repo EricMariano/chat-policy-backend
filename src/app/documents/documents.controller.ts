@@ -3,6 +3,7 @@ import {
   Controller,
   Post,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiBody, ApiConsumes, ApiOkResponse } from '@nestjs/swagger';
@@ -16,8 +17,15 @@ import type { UploadDocumentDto } from './dto/upload-document.dto';
 import { UploadDocumentRequestDto } from './dto/upload-document-request.dto';
 import { DocumentsService } from './documents.service';
 import { ALLOWED_UPLOAD_MIME_TYPES } from './document-upload.util';
+import { CreateDocumentDto } from './dto/create-document-request.dto';
+import { AuthGuard } from '../guards/auth.guard';
+import { RolesGuard } from '../guards/roles.guard';
+import { Roles } from '../role';
+import { UserRole } from '../user/user.enum';
+import { User } from '../user';
+import type { JwtPayload } from '../types/jwt';
 
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB
 
 @Controller('documents')
 export class DocumentsController {
@@ -27,6 +35,8 @@ export class DocumentsController {
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UploadDocumentRequestDto })
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOkResponse({
     description: 'Documento indexado a partir do arquivo enviado',
   })
@@ -45,15 +55,20 @@ export class DocumentsController {
       }),
     )
     file: Express.Multer.File,
-    @Body() body: UploadDocumentDto,
+    @Body() body: CreateDocumentDto,
+    @User() user:JwtPayload
   ) {
-    return this.documents.createDocumentFromFile(
+    return this.documents.createDocument(
       {
         buffer: file.buffer,
         mimetype: file.mimetype,
         originalname: file.originalname,
       },
-      body,
+      {
+        bodyData:body,
+        typeUserId:user.userTypeId,
+        userId:user.userId,
+      }
     );
   }
 }
