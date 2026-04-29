@@ -1,112 +1,109 @@
-import { Injectable } from '@nestjs/common';
-import OpenAI from 'openai';
-import { EmbeddingService } from '../embedding/embedding.service';
-import { PineconeService } from '../pinecone/pinecone.service';
-import type { ChatResponseDto, ChatSourceDto } from './dto/chat-response.dto';
-
-const CHAT_MODEL = 'gpt-4o-mini' as const;
-const TOP_K = 5;
-const MIN_SCORE = 0.5;
-
-interface ChunkMetadata {
-  documentId?: string;
-  chunkIndex?: number;
-  text?: string;
-  title?: string;
-  sourceLink?: string;
-}
-
-const SYSTEM_PROMPT = `Responda apenas com base nas políticas fornecidas, em inglês ou em português com base na lingua da pergunta. Sempre cite a fonte com o link. Se a pergunta não for sobre políticas, recuse educadamente.`;
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ServiceData, CheckPermSafe } from '../types/general';
+import { DefaultChatDto } from './dto/default-chat.dto';
+import { CreateChatDto } from './dto/create-chat.dto';
+import { randomUUID } from 'crypto';
+import { ChatResponse } from './chat.type';
 
 @Injectable()
 export class ChatService {
   constructor(
-    private readonly embedding: EmbeddingService,
-    private readonly pinecone: PineconeService,
-    private readonly openai: OpenAI,
+    private readonly prisma: PrismaService,
   ) {}
 
-  // RAG flow: embed question → query Pinecone → build context and sources → OpenAI Chat Completions.
-  async ask(question: string): Promise<ChatResponseDto> {
-    const vector = await this.embedding.embed(question);
+  async checkPerm(data: ServiceData<DefaultChatDto>): Promise<any> {
+    const { userId, bodyData } = data;
+    const { chatId } = bodyData;
 
-    const response = await this.pinecone.query({
-      vector,
-      topK: TOP_K,
-      includeMetadata: true,
+    const chatOwner = await this.prisma.chat.findUnique({
+      where: { chatId },
+      select: {
+        chatId: true,
+        userId: true,
+        title: true,
+      },
     });
 
-    const matches = response.matches ?? [];
-    const withScore = matches.filter(
-      (m): m is typeof m & { score: number } =>
-        m.score != null && m.score >= MIN_SCORE,
-    );
-
-    if (withScore.length === 0) {
-      return {
-        answer:
-          'Não encontrei trechos relevantes nas políticas indexadas para essa pergunta. Por favor, reformule ou pergunte sobre o conteúdo das políticas disponíveis.',
-        sources: [],
-      };
+    if (!chatOwner) {
+      throw new NotFoundException('Chat não encontrado');
     }
 
-    const metadataList = withScore.map(
-      (m) => m.metadata as ChunkMetadata | undefined,
-    );
-    const contextParts = metadataList
-      .filter((m) => m?.text)
-      .map((m) => m!.text as string);
-
-    if (contextParts.length === 0) {
-      return {
-        answer:
-          'Não encontrei trechos relevantes nas políticas indexadas para essa pergunta. Por favor, reformule ou pergunte sobre o conteúdo das políticas disponíveis.',
-        sources: [],
-      };
+    if (chatOwner.userId === userId) {
+      return chatOwner;
     }
 
-    const context = contextParts.join('\n\n---\n\n');
-
-    const uniqueDocumentIds = [
-      ...new Set(
-        metadataList
-          .map((m) => m?.documentId)
-          .filter((id): id is string => typeof id === 'string'),
-      ),
-    ];
-
-    const sourcesByDocumentId = new Map<string, ChatSourceDto>();
-    for (const m of metadataList) {
-      const docId = m?.documentId;
-      const title = m?.title;
-      const sourceLink = m?.sourceLink;
-      if (!docId || !title || !sourceLink) continue;
-      if (sourcesByDocumentId.has(docId)) continue;
-      sourcesByDocumentId.set(docId, {
-        documentTitle: title,
-        sourceLink,
-      });
-    }
-
-    const sources: ChatSourceDto[] = uniqueDocumentIds
-      .map((id) => sourcesByDocumentId.get(id))
-      .filter((s): s is ChatSourceDto => Boolean(s));
-
-    const userMessage = `Contexto (trechos das políticas):\n\n${context}\n\n---\n\nPergunta: ${question}`;
-
-    const completion = await this.openai.chat.completions.create({
-      model: CHAT_MODEL,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userMessage },
-      ],
-      stream: false,
+    const sharedChat = await this.prisma.sharedChat.findUnique({
+      where: {
+        chatId_userId: {
+          chatId: chatId,
+          userId: userId,
+        },
+      },
+      select: {
+        chatId: true,
+        userId: true,
+        roleChatId: true,
+      },
     });
 
-    const answer =
-      completion.choices[0]?.message?.content?.trim() ??
-      'Não foi possível gerar uma resposta.';
+    if (!sharedChat) {
+      throw new UnauthorizedException('Sem permissão para acessar este chat');
+    }
 
-    return { answer, sources };
+    return chatOwner;
+  }
+
+  async checkPermSafe(data: ServiceData<DefaultChatDto>): Promise<CheckPermSafe<any>> {
+    try {
+      const result = await this.checkPerm(data);
+      return {
+        data: result,
+        ok: true
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return {
+          data: null,
+          ok: false,
+          error: 'NotFoundException'
+        };
+      }
+      if (error instanceof UnauthorizedException) {
+        return {
+          data: null,
+          ok: false,
+          error: 'UnauthorizedException'
+        };
+      }
+
+      return {
+        data: null,
+        ok: false,
+        error: 'Erro ao verificar permissão'
+      };
+    }
+  }
+
+  async create(data: ServiceData<CreateChatDto>):Promise<ChatResponse> {
+    const { userId, bodyData } = data;
+    const { title } = bodyData;
+
+    return await this.prisma.chat.create({
+      data: {
+        chatId: randomUUID(),
+        title: title,
+        userId: userId,
+        createdAt: new Date(),
+        lastUpdateAt: new Date(),
+      },
+      select: {
+        chatId: true,
+        title: true,
+        userId: true,
+        createdAt: true,
+        lastUpdateAt: true,
+      },
+    });
   }
 }
