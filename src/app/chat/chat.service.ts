@@ -5,8 +5,10 @@ import { PineconeService } from '../pinecone/pinecone.service';
 import type { ChatResponseDto, ChatSourceDto } from './dto/chat-response.dto';
 
 const CHAT_MODEL = 'gpt-4o-mini' as const;
-const TOP_K = 5;
+
+const TOP_K = 3;
 const MIN_SCORE = 0.5;
+
 
 interface ChunkMetadata {
   documentId?: string;
@@ -16,7 +18,17 @@ interface ChunkMetadata {
   sourceLink?: string;
 }
 
-const SYSTEM_PROMPT = `Responda apenas com base nas políticas fornecidas, em inglês ou em português com base na lingua da pergunta. Sempre cite a fonte com o link. Se a pergunta não for sobre políticas, recuse educadamente.`;
+const SYSTEM_PROMPT = `
+Você é um assistente virtual especializado nas políticas e normas internas da empresa.
+
+Regras:
+- Responda SOMENTE com base nos trechos de política fornecidos no contexto.
+- Se a pergunta não estiver relacionada às políticas, recuse .
+- Responda no mesmo idioma da pergunta (português ou inglês).
+- Seja direto e objetivo. Use listas quando houver múltiplos pontos.
+- Sempre indique de qual política a informação veio.
+- Nunca invente informações que não estejam no contexto fornecido.
+`;
 
 @Injectable()
 export class ChatService {
@@ -101,6 +113,7 @@ export class ChatService {
         { role: 'user', content: userMessage },
       ],
       stream: false,
+       max_tokens: 500,
     });
 
     const answer =
