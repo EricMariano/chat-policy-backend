@@ -11,6 +11,8 @@ import { DocumentsModule } from './app/documents/documents.module';
 import { ChatModule } from './app/chat/chat.module';
 import { MessageModule } from './app/message/message.module';
 import { QueueModule } from './app/queue/queue.module';
+import { ModelIaModule } from './app/model-ia/model-ia.module';
+import { ModelIaKeyModule } from './app/model-ia-key/model-ia-key.module';
 
 @Module({
   imports: [
@@ -23,7 +25,9 @@ import { QueueModule } from './app/queue/queue.module';
     DocumentsModule,
     ChatModule,
     MessageModule,
-    QueueModule
+    QueueModule,
+    ModelIaModule,
+    ModelIaKeyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

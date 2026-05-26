@@ -4,6 +4,7 @@ import { PineconeModule } from '../pinecone/pinecone.module';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { ChatGateway } from './chat.gateway';
+import { ChatRepository } from './chat.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import { MessageService } from '../message/message.service';
 import { MessageRepository } from '../message/message.repository';
@@ -13,19 +14,19 @@ import { RedisModule } from '../redis/redis.module';
 import { RedisProvider } from '../redis/redis.provider';
 
 @Module({
-  imports: [PineconeModule, OpenAIModule],
+  imports: [PineconeModule, OpenAIModule, RedisModule,],
   controllers: [ChatController],
   providers: [
     ChatService,
     ChatGateway,
+    ChatRepository,
     PrismaService,
     MessageService,
     MessageRepository,
     QueueService,
-    RedisModule,
     RedisProvider,
     RedisService
   ],
   exports: [ChatService, ChatGateway, PrismaService],
 })
-export class ChatModule {}
+export class ChatModule { }

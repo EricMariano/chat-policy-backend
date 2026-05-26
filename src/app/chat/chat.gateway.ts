@@ -28,7 +28,10 @@ interface JoinChatPayload {
 interface SendMessagePayload {
   chatId?: string;
   messageText: string;
-  modelIaId?: number;
+  modelIaId: number;
+  randomUUID: string;
+  selectedDepartments?:number[]
+  selectedSystems?:number[]
 }
 
 interface TypingPayload {
@@ -46,8 +49,7 @@ interface TypingPayload {
   pingInterval: 25000,
 })
 export class ChatGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
-{
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server!: Server;
   private readonly logger = new Logger(ChatGateway.name);
 
@@ -83,7 +85,7 @@ export class ChatGateway
   async handleConnection(client: AuthenticatedSocket) {
     try {
       const token = this.extractToken(client);
-      
+
       if (!token) {
         this.logger.warn(`Client ${client.id} connected without token`);
         client.disconnect(true);
@@ -91,7 +93,7 @@ export class ChatGateway
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
-      
+
       const user = await this.prisma.user.findUnique({
         where: { userId: decoded.userId },
         select: { userId: true, active: true },
@@ -105,11 +107,11 @@ export class ChatGateway
 
       client.user = decoded;
       this.logger.log(`Client connected: ${client.id} - User: ${decoded.userId}`);
-      
-      client.emit('connected', { 
-        status: 'success', 
+
+      client.emit('connected', {
+        status: 'success',
         message: 'Connected successfully',
-        userId: decoded.userId 
+        userId: decoded.userId
       });
     } catch (error) {
       this.logger.error(`Authentication failed for client ${client.id}:`, (error as Error).message);
@@ -129,7 +131,7 @@ export class ChatGateway
       }
 
       const { chatId } = payload;
-      
+
       const hasPermission = await this.chatService.checkPermSafe({
         userId: client.user.userId,
         typeUserId: client.user.userTypeId,
@@ -142,9 +144,9 @@ export class ChatGateway
 
       const roomName = `chat:${chatId}`;
       await client.join(roomName);
-      
+
       this.logger.log(`User ${client.user.userId} joined chat ${chatId}`);
-      
+
       client.to(roomName).emit('user-joined', {
         userId: client.user.userId,
         timestamp: new Date().toISOString(),
@@ -169,11 +171,11 @@ export class ChatGateway
 
       const { chatId } = payload;
       const roomName = `chat:${chatId}`;
-      
+
       await client.leave(roomName);
-      
+
       this.logger.log(`User ${client.user.userId} left chat ${chatId}`);
-      
+
       client.to(roomName).emit('user-left', {
         userId: client.user.userId,
         timestamp: new Date().toISOString(),
@@ -196,25 +198,29 @@ export class ChatGateway
         throw new WsException('Unauthorized');
       }
 
-      const { chatId, messageText, modelIaId } = payload;
-      
+      const { chatId, messageText, modelIaId,selectedDepartments,selectedSystems } = payload;
+
       if (!messageText || messageText.trim().length === 0) {
         throw new WsException('Message text cannot be empty');
       }
 
+      console.log(payload)
+
       const createMessageDto: CreateMessageDto = {
         chatId,
         messageText: messageText.trim(),
-        modelIaId: modelIaId ?? 1,
+        modelIaId: modelIaId,
+        departmentsIds: selectedDepartments ? selectedDepartments : [],
+        systemsIds: selectedSystems ? selectedSystems : []
       };
 
-      await this.messageService.createClient({
+      const newChatId = await this.messageService.createClient({
         userId: client.user.userId,
         typeUserId: client.user.userTypeId ?? 1,
-        bodyData: createMessageDto,
+        bodyData: createMessageDto
       });
 
-      const targetChatId = chatId || await this.getLastCreatedChatId(client.user.userId);
+      const targetChatId = newChatId;
       const roomName = `chat:${targetChatId}`;
 
       this.server.to(roomName).emit('new-message', {
@@ -227,9 +233,9 @@ export class ChatGateway
 
       return {
         event: 'message-sent',
-        data: { 
+        data: {
           chatId: targetChatId,
-          status: 'PROCESSING',
+          status: 'PROCESSING'
         },
       };
     } catch (error) {
@@ -269,10 +275,10 @@ export class ChatGateway
       }
 
       const { chatId, lastMessageId } = payload;
-      
+
       const messages = await this.messageService.findMessagesWithPagination({
         userId: client.user.userId,
-        typeUserId: client.user.userTypeId ?? 1,
+        typeUserId: client.user.userTypeId,
         bodyData: { chatId, lastMessageId },
       });
 
@@ -293,41 +299,53 @@ export class ChatGateway
     error?: string;
   }) {
     const roomName = `chat:${chatId}`;
-    
+
     this.server.to(roomName).emit('message-response', {
       ...data,
       timestamp: new Date().toISOString(),
     });
-    
+
     this.logger.log(`Notified room ${roomName} about message ${data.messageId} status: ${data.status}`);
   }
 
   public async notifyNewMessage(chatId: string, message: any) {
     const roomName = `chat:${chatId}`;
-    
+
     this.server.to(roomName).emit('new-message', {
       ...message,
       timestamp: new Date().toISOString(),
     });
-    
+
     this.logger.log(`Broadcasted new message to room ${roomName}`);
   }
 
   private extractToken(client: Socket): string | null {
+    const cookieHeader = client.handshake.headers.cookie;
+    if (cookieHeader) {
+      const cookies = Object.fromEntries(
+        cookieHeader.split(';').map((c) => {
+          const parts = c.trim().split('=');
+          return [parts[0], parts.slice(1).join('=')];
+        })
+      );
+      if (cookies['access_token']) {
+        return cookies['access_token'];
+      }
+    }
+
     const authHeader = client.handshake.headers.authorization;
-    
     if (authHeader && authHeader.startsWith('Bearer ')) {
       return authHeader.substring(7);
     }
-    
+
     if (client.handshake.auth && client.handshake.auth.token) {
       return client.handshake.auth.token;
     }
-    
+
     if (client.handshake.query && client.handshake.query.token) {
       return client.handshake.query.token as string;
     }
-    
+
     return null;
   }
 
@@ -337,11 +355,11 @@ export class ChatGateway
       orderBy: { createdAt: 'desc' },
       select: { chatId: true },
     });
-    
+
     if (!lastChat) {
       throw new WsException('No chat found for user');
     }
-    
+
     return lastChat.chatId;
   }
 }

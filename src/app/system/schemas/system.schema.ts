@@ -22,3 +22,7 @@ export const updateSystemSchema = z.object({
 export const defaultSystemSchema = z.object({
   systemId: z.coerce.number("ID do sistema é um campo obrigatório"),
 });
+
+export const scrollingSystemSchema = z.object({
+   systemId: z.coerce.number().optional()
+})

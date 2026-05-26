@@ -20,25 +20,29 @@ export class MessageRepository {
 
   async findMessagesWithPagination(
     chatId: string,
-    lastMessageId: string | null,
+    sendAt: Date | null,
     limit: number
   ): Promise<MessageWithModelResponse[]> {
     return this.prisma.$queryRaw<MessageWithModelResponse[]>`
-        SELECT 
-            tm.message_id AS messageId,
-            tm.chat_id AS chatId,
-            tm.message_text AS messageText,
-            tm.send_at AS sendAt,
-            tm.user_id AS userId,
-            tmi.model_ia_name AS modelIaName
-        FROM 
+        SELECT
+            tm.message_id AS "messageId",
+            tm.chat_id AS "chatId",
+            tm.message_text AS "messageText",
+            tm.send_at AS "sendAt",
+            tm.user_id AS "userId",
+            tmi.model_nm AS "modelIaName",
+            tu.name AS "userName"
+        FROM
             tb_message tm
         LEFT JOIN
-            tb_model_ia tmi ON 
+            tb_model_ia tmi ON
                 tm.model_ia_id = tmi.model_ia_id
-        WHERE 
-            (${chatId}::text IS NULL OR tm.chat_id = ${chatId}) 
-            AND (${lastMessageId}::text IS NULL OR tm.send_at < ${lastMessageId})
+        LEFT JOIN
+            tb_user tu ON
+                tm.user_id = tu.user_id
+        WHERE
+            (${chatId}::text IS NULL OR tm.chat_id = ${chatId})
+            AND (${sendAt}::timestamp IS NULL OR tm.send_at < ${sendAt}::timestamp)
         ORDER BY tm.send_at DESC LIMIT ${limit};
     `;
   }

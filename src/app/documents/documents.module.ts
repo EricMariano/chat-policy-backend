@@ -2,13 +2,14 @@ import { Module } from '@nestjs/common';
 import { OpenAIModule } from '../embedding/openai.module';
 import { PineconeModule } from '../pinecone/pinecone.module';
 import { RedisModule } from '../redis/redis.module';
+import { MinioModule } from '../minio/minio.module';
 import { DocumentsController } from './documents.controller';
 import { DocumentsService } from './documents.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 
 @Module({
-  imports: [PineconeModule, OpenAIModule, RedisModule],
+  imports: [PineconeModule, OpenAIModule, RedisModule, MinioModule],
   controllers: [DocumentsController],
   providers: [DocumentsService, PrismaService, QueueService],
   exports: [DocumentsService, PrismaService, QueueService],

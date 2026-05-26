@@ -6,6 +6,7 @@ import { UpdateSystemDto } from './dto/update-system.dto.js';
 import { DefaultSystemDto } from './dto/default-system.dto.js';
 import { SystemRepository } from './system.repository.js';
 import { SystemResponse } from './system.type.js';
+import { ScrollingSystemDto } from './dto/scrolling-system.dto.js';
 
 @Injectable()
 export class SystemService {
@@ -83,7 +84,7 @@ export class SystemService {
     return system;
   }
 
-  async findAll(data: ServiceData<DefaultSystemDto|null>): Promise<{systems: SystemResponse[], finish: boolean}> {
+  async findAll(data: ServiceData<ScrollingSystemDto>): Promise<{data: SystemResponse[], finish: boolean}> {
     const {userId, typeUserId} = data;
     
     let systems: SystemResponse[] = [];
@@ -93,13 +94,13 @@ export class SystemService {
 
     if (typeUserId === 1) {
       systems = await this.systemRepository.findAllSystems(
-        data.bodyData?.systemId??null,
+        data.bodyData.systemId??null,
         limit
       );
     } else if(typeUserId === 2) {
       systems = await this.systemRepository.findSystemsWithPagination(
         userId,
-        data.bodyData?.systemId??null, 
+        data.bodyData.systemId??null, 
         limit
       );
     }
@@ -110,7 +111,7 @@ export class SystemService {
     }
 
     return {
-      systems,
+      data:systems,
       finish
     };
   }

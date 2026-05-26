@@ -17,26 +17,30 @@ export class MessageService {
     private readonly messageRepository: MessageRepository,
     private readonly chatService: ChatService,
     private readonly queueService: QueueService
-  ) {}
+  ) { }
 
   private buildChatTitle(text: string): string {
     return text.length >= 100 ? text.substring(0, 96).concat('...') : text;
   }
-  
-  async createClient(data: ServiceData<CreateMessageDto>): Promise<void> { 
+
+  async createClient(data: ServiceData<CreateMessageDto>): Promise<string> {
     const { userId, bodyData: createMessageDto } = data;
-    
+
     let chatId = "";
-    let messageId = randomUUID();      
+    let messageId = randomUUID();
 
     await this.prisma.$transaction(async (tx) => {
-      if(createMessageDto.chatId) {
-        await this.chatService.checkPerm({
+      if (createMessageDto.chatId) {
+        const { isOwner, roleChatId } = await this.chatService.checkPerm({
           ...data,
-          bodyData:{
+          bodyData: {
             chatId: createMessageDto.chatId
           }
         });
+
+        if (!isOwner && roleChatId === 2) {
+          throw new UnauthorizedException("O seu tipo de permissão não te dar permissão de escrever ")
+        }
 
         chatId = createMessageDto.chatId;
 
@@ -48,7 +52,7 @@ export class MessageService {
             title: this.buildChatTitle(createMessageDto.messageText)
           }
         });
-        
+
         chatId = newChat.chatId;
       }
 
@@ -68,21 +72,29 @@ export class MessageService {
           messageText: true,
           userId: true,
           sendAt: true,
-          status:true
+          status: true
         },
       });
     });
 
+    console.log(createMessageDto.departmentsIds)
+    console.log(createMessageDto.systemsIds)
+
     await this.queueService.addProcessMessageJob({
-      messageId:messageId
-    })
+      messageId: messageId
+    },
+    createMessageDto.departmentsIds ? createMessageDto.departmentsIds : [],
+    createMessageDto.systemsIds ? createMessageDto.systemsIds : []
+    )
+
+    return chatId;
 
   }
 
   async checkPerm(data: ServiceData<DefaultMessageDto>): Promise<MessageResponse> {
     const { userId, bodyData } = data;
     const { messageId } = bodyData;
-    
+
     const message = await this.prisma.message.findUnique({
       where: { messageId },
       select: {
@@ -91,39 +103,56 @@ export class MessageService {
         messageText: true,
         userId: true,
         sendAt: true,
-        modelIaId:true
+        modelIaId: true
       },
     });
-    
+
     if (!message) {
       throw new NotFoundException('Mensagem não encontrada');
     }
 
     const hasPermission = (await this.messageRepository.findUserWithPermission(userId, message.chatId))?.exists === 1;
-    
+
     if (!hasPermission) {
       throw new UnauthorizedException('Sem permissão para acessar esta mensagem');
     }
-    
+
     return message;
   }
 
-  async findMessagesWithPagination(data: ServiceData<FindWithPaginationMessageDto>): Promise<{data: MessageResponse[], finish: boolean}> {
+  async findMessagesWithPagination(data: ServiceData<FindWithPaginationMessageDto>): Promise<{ data: MessageResponse[], finish: boolean }> {
     const { bodyData } = data;
-    
+
     await this.chatService.checkPerm(data)
-    
-    const limit = Number(process.env.MAX_ITEMS)+1;
+
+    const limit = Number(process.env.MAX_ITEMS) + 1;
     let finish = true;
 
-    const messagens = await this.messageRepository.findMessagesWithPagination(bodyData.chatId, bodyData.lastMessageId??null,limit);
+    let message
+    
+    if(bodyData.lastMessageId) {
+      message = await this.prisma.message.findUnique({
+        where: {
+          messageId: bodyData.lastMessageId
+        },
+        select:{
+          sendAt:true
+        }
+      })
+    }
+
+    if(!message && bodyData.lastMessageId) {
+      throw new NotFoundException('Mensagem não encontrada');
+    }
+
+    const messagens = await this.messageRepository.findMessagesWithPagination(bodyData.chatId, message?.sendAt ?? null, limit);
 
     if (messagens.length === limit) {
       messagens.pop();
       finish = false;
     }
 
-    return {data: messagens, finish};
+    return { data: messagens, finish };
   }
 
 }

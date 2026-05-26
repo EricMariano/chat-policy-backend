@@ -12,10 +12,16 @@ import { JwtPayload } from '../types/jwt';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { FindUserByEmailDto } from './dto/find-user-by-email.dto';
+import { UserRepository } from './user.repository';
+import { UserByEmailResponse } from './user.type';
 
 @Injectable()
 export class UserService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly userRepository: UserRepository,
+  ) {}
 
   async create(data: ServiceData<CreateUserDto>) {
     const { bodyData: createUserDto } = data;
@@ -217,5 +223,12 @@ export class UserService {
     return await this.prisma.user.findFirst({
       where: { email, active: true },
     });
+  }
+
+  async findUserByEmail(data: ServiceData<FindUserByEmailDto>): Promise<UserByEmailResponse[]> {
+    const { bodyData } = data;
+    const { email } = bodyData;
+
+    return await this.userRepository.findByEmail(email);
   }
 }

@@ -2,11 +2,12 @@ import {
   Body,
   Controller,
   Post,
+  Put,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiBody, ApiConsumes, ApiOkResponse } from '@nestjs/swagger';
+import { ApiBody, ApiConsumes, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   FileTypeValidator,
@@ -24,6 +25,10 @@ import { Roles } from '../role';
 import { UserRole } from '../user/user.enum';
 import { User } from '../user';
 import type { JwtPayload } from '../types/jwt';
+import { UpdateDocumentSystemsDto } from './dto/update-document-systems.dto';
+import { UpdateDocumentDepartmentsDto } from './dto/update-document-departments.dto';
+import { ServiceData } from '../types/general';
+import { NewVersionRequestDto } from './dto/new-version-request.dto';
 
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB
 
@@ -70,5 +75,78 @@ export class DocumentsController {
         userId:user.userId,
       }
     );
+  }
+
+  @Post('new-version')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: NewVersionRequestDto })
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Cria uma nova versão de um documento existente' })
+  @ApiResponse({ status: 200, description: 'Nova versão criada com sucesso' })
+  @ApiResponse({ status: 400, description: 'Documento não encontrado ou versão já existe' })
+  async newVersion(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: MAX_UPLOAD_BYTES }),
+          new FileTypeValidator({
+            fileType: new RegExp(
+              `^(${ALLOWED_UPLOAD_MIME_TYPES.map((m) => m.replace(/\//g, '\\/')).join('|')})$`,
+            ),
+          }),
+        ],
+        fileIsRequired: true,
+      }),
+    )
+    file: Express.Multer.File,
+    @Body() body: NewVersionRequestDto,
+    @User() user: JwtPayload
+  ) {
+    return this.documents.newVersionDocument(
+      {
+        buffer: file.buffer,
+        mimetype: file.mimetype,
+        originalname: file.originalname,
+      },
+      {
+        bodyData: body,
+        typeUserId: user.userTypeId,
+        userId: user.userId,
+      }
+    );
+  }
+
+  @Put('systems')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Atualiza os sistemas vinculados a um documento (sync)' })
+  @ApiBody({ type: UpdateDocumentSystemsDto })
+  @ApiResponse({ status: 200, description: 'Sistemas atualizados com sucesso' })
+  @ApiResponse({ status: 404, description: 'Documento não encontrado' })
+  updateSystems(@User() user: JwtPayload, @Body() body: UpdateDocumentSystemsDto) {
+    const serviceData: ServiceData<UpdateDocumentSystemsDto> = {
+      userId: user.userId,
+      typeUserId: user.userTypeId,
+      bodyData: body,
+    };
+    return this.documents.updateDocumentSystems(serviceData);
+  }
+
+  @Put('departments')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Atualiza os departamentos vinculados a um documento (sync)' })
+  @ApiBody({ type: UpdateDocumentDepartmentsDto })
+  @ApiResponse({ status: 200, description: 'Departamentos atualizados com sucesso' })
+  @ApiResponse({ status: 404, description: 'Documento não encontrado' })
+  updateDepartments(@User() user: JwtPayload, @Body() body: UpdateDocumentDepartmentsDto) {
+    const serviceData: ServiceData<UpdateDocumentDepartmentsDto> = {
+      userId: user.userId,
+      typeUserId: user.userTypeId,
+      bodyData: body,
+    };
+    return this.documents.updateDocumentDepartments(serviceData);
   }
 }

@@ -47,8 +47,8 @@ export class DepartmentController {
     return this.departmentService.create(serviceData);
   }
 
-  @Get()
-  @ApiOperation({ summary: 'Listar todos os departamentos ativos' })
+  @Get("scrolling")
+  @ApiOperation({ summary: 'Listar todos os departamentos ativos com scrolling' })
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN,UserRole.USER)
   @ApiResponse({ status: 200, description: 'Lista de departamentos' })

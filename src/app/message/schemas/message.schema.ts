@@ -7,6 +7,8 @@ export const createMessageSchema = z.object({
   chatId: z.string("ID do chat é um campo obrigatório")
   .uuid("ID do chat deve ser um UUID válido").optional(),
   modelIaId:z.number("ID do modelo de IA é um campo obrigatório").positive("Modelo de IA invalido"),
+  departmentsIds:z.array(z.coerce.number()).optional(),
+  systemsIds: z.array(z.coerce.number()).optional()
 });
 
 export const defaultMessageSchema = z.object({

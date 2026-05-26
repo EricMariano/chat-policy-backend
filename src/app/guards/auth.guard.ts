@@ -12,13 +12,11 @@ export class AuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
 
-    const authHeader = request.headers.authorization;
+    const token = request.cookies?.access_token;
 
-    if (!authHeader) {
+    if (!token) {
       throw new UnauthorizedException('Token não enviado');
     }
-
-    const [, token] = authHeader.split(' ');
 
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
@@ -53,9 +51,14 @@ export class AuthGuard implements CanActivate {
           process.env.JWT_SECRET!
         );
 
-        // Adicionar novo token ao header da resposta
+        // Adicionar novo token ao cookie httpOnly
         const response = context.switchToHttp().getResponse();
-        response.setHeader('X-New-Token', newToken);
+        response.cookie('access_token', newToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: 60 * 60 * 1000, // 1 hora
+        });
         
         // Atualizar o decoded com o novo token
         decoded.exp = currentTime + (60 * 60);

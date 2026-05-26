@@ -16,3 +16,20 @@ export const defaultChatSchema = z.object({
 export const scrollingChatSchema = z.object({
   chatId: z.string().uuid("ID do chat deve ser um UUID válido").optional()
 });
+
+export const sharechatSchema = z.object({
+  chatId: z.string({ message: 'ID do chat é obrigatório' }).uuid('ID do chat deve ser um UUID válido'),
+  targetUserId: z.number({ message: 'ID do usuário é obrigatório' }),
+  roleChatId: z.number({ message: 'ID do role é obrigatório' }),
+});
+
+export const updateSharedChatSchema = z.object({
+  chatId: z.string({ message: 'ID do chat é obrigatório' }).uuid('ID do chat deve ser um UUID válido'),
+  targetUserId: z.number({ message: 'ID do usuário é obrigatório' }),
+  roleChatId: z.number({ message: 'ID do role é obrigatório' }),
+});
+
+export const removeSharedChatSchema = z.object({
+  chatId: z.string({ message: 'ID do chat é obrigatório' }).uuid('ID do chat deve ser um UUID válido'),
+  targetUserId: z.coerce.number({ message: 'ID do usuário é obrigatório' }),
+});

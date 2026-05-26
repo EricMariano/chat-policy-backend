@@ -61,8 +61,8 @@ export class DepartmentRepository {
     ): Promise<DepartmentResponse[]> {
         return this.prisma.$queryRaw<DepartmentResponse[]>`
             SELECT 
-                d.department_id,
-                d.department_nm,
+                d.department_id AS "departmentId",
+                d.department_nm AS "departmentNm",
                 d.acronym,
                 d.active
             FROM 

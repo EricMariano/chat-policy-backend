@@ -15,4 +15,5 @@ export interface MessageWithModelResponse {
   sendAt: Date;
   modelIaId: number|null;
   modelIaName: string|null;
+  userName: string|null;
 }

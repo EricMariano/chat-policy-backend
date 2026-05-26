@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   UseGuards,
   Put,
+  Query,
 } from '@nestjs/common';
 import { SystemService } from './system.service.js';
 import { CreateSystemDto } from './dto/create-system.dto.js';
@@ -22,6 +23,7 @@ import { UserRole } from '../user/user.enum.js';
 import { Roles } from '../role.js';
 import { User } from '../user.js';
 import {type JwtPayload } from '../types/jwt.js';
+import { ScrollingSystemDto } from './dto/scrolling-system.dto.js';
 
 @ApiTags('Systems')
 @Controller('systems')
@@ -44,16 +46,16 @@ export class SystemController {
     return this.systemService.create(serviceData);
   }
 
-  @Get()
+  @Get("scrolling")
   @ApiOperation({ summary: 'Listar todos os sistemas ativos' })
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN,UserRole.USER)
   @ApiResponse({ status: 200, description: 'Lista de sistemas' })
-  findAll(@User() user:JwtPayload) {
-    const serviceData: ServiceData<null> = {
+  findAll(@User() user:JwtPayload, @Query() bodyData: ScrollingSystemDto) {
+    const serviceData: ServiceData<ScrollingSystemDto> = {
       userId: user.userId,
       typeUserId: user.userTypeId,
-      bodyData: null
+      bodyData
     };
     return this.systemService.findAll(serviceData);
   }

@@ -35,8 +35,8 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('BullMQ queues closed');
   }
 
-  async addProcessMessageJob(data: DefaultMessageDto) {
-    await this.messageQueue.add('process-message', data, {
+  async addProcessMessageJob(data: DefaultMessageDto, departmentsIds:number[],systemsIds:number[]) {
+    await this.messageQueue.add('process-message', {...data,departmentsIds,systemsIds}, {
       attempts: 5,
       backoff: {
         type: 'exponential',

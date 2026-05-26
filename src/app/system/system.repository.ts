@@ -27,8 +27,8 @@ export class SystemRepository {
   ): Promise<SystemResponse[]> {
     const query = `
       SELECT 
-          s.system_id,
-          s.system_nm,
+          s.system_id AS "systemId",
+          s.system_nm AS "systemNm",
           s.active
       FROM 
           tb_system s
@@ -58,8 +58,8 @@ export class SystemRepository {
   ): Promise<SystemResponse[]> {
     return this.prisma.$queryRaw`
         SELECT 
-            s.system_id,
-            s.system_nm,
+            s.system_id AS "systemId",
+            s.system_nm AS "systemNm",
             s.active
         FROM 
             tb_system s

@@ -29,3 +29,19 @@ export const schemaNewVersionDocument = z.object({
 export const schemaJobDocument = z.object({
     documentVersionId: z.string("ID do documento é obrigatório").uuid("ID do documento invalido")
 })
+
+export const schemaUpdateDocument = z.object({
+  documentVersionId:z.string("id da versão do documento é um campo obrigatório")
+  .uuid("id do documento invalido"),
+  title:z.string("título do documento é um campo obrigatório")
+})
+
+export const schemaUpdateDocumentSystems = z.object({
+  documentId: z.string({ message: 'ID do documento é obrigatório' }).uuid('ID do documento inválido'),
+  systemIds: z.array(z.number({ message: 'ID do sistema deve ser um número' }), { message: 'systemIds deve ser um array' }),
+})
+
+export const schemaUpdateDocumentDepartments = z.object({
+  documentId: z.string({ message: 'ID do documento é obrigatório' }).uuid('ID do documento inválido'),
+  departmentIds: z.array(z.number({ message: 'ID do departamento deve ser um número' }), { message: 'departmentIds deve ser um array' }),
+})

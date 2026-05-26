@@ -10,12 +10,17 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Res,
+  Query,
+  Logger,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { FindUserByEmailDto } from './dto/find-user-by-email.dto';
 import { ServiceData } from '../types/general';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Roles } from '../role';
 import { AuthGuard } from '../guards/auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
@@ -27,7 +32,10 @@ import { LoginUserDto } from './dto/login.dto';
 @ApiTags('user')
 @Controller('user')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly logger: Logger
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Criar novo usuário' })
@@ -50,8 +58,26 @@ export class UserController {
   @ApiBody({ type: LoginUserDto })
   @ApiResponse({ status: 200, description: 'Login realizado com sucesso' })
   @ApiResponse({ status: 401, description: 'Credenciais inválidas' })
-  login(@Body() loginUserDto: LoginUserDto) {
-    return this.userService.login(loginUserDto);
+  async login(@Body() loginUserDto: LoginUserDto, @Res({ passthrough: true }) res: Response,) {
+    const result = await this.userService.login(loginUserDto);
+    
+    res.cookie('access_token', result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 1000, // 1 hora
+    });
+    
+    const { token, ...userData } = result;
+    return userData;
+  }
+
+  @Post('logout')
+  @ApiOperation({ summary: 'Logout de usuário' })
+  @ApiResponse({ status: 200, description: 'Logout realizado com sucesso' })
+  logout(@Res({ passthrough: true }) res: Response,) {
+    res.clearCookie('access_token');
+    return { message: 'Logout realizado com sucesso' };
   }
 
   @Get()
@@ -113,5 +139,29 @@ export class UserController {
       bodyData: id
     };
     return this.userService.remove(serviceData);
+  }
+
+  @Get('email/:email')
+  @ApiOperation({ summary: 'Buscar usuário por email' })
+  @ApiParam({ name: 'email', description: 'Email do usuário' })
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.USER)
+  @ApiResponse({ status: 200, description: 'Usuário encontrado' })
+  @ApiResponse({ status: 404, description: 'Usuário não encontrado' })
+  async findUserByEmail(
+    @User() user: JwtPayload,
+    @Param() query: FindUserByEmailDto,
+  ) {
+
+    const serviceData: ServiceData<FindUserByEmailDto> = {
+      userId: user.userId,
+      typeUserId: user.userTypeId,
+      bodyData: query,
+    };
+
+    console.log(query)
+
+    return await this.userService.findUserByEmail(serviceData);
+    
   }
 }

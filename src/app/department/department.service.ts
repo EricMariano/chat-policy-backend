@@ -88,7 +88,7 @@ export class DepartmentService {
     throw new UnauthorizedException('Sem permissão para acessar este departamento');
   }
 
-  async findAll(data: ServiceData<ScrollingDepartmentDto>): Promise<{departments: DepartmentResponse[], finish: boolean}> {
+  async findAll(data: ServiceData<ScrollingDepartmentDto>): Promise<{data: DepartmentResponse[], finish: boolean}> {
     const {userId, typeUserId} = data;
     
     let departments: DepartmentResponse[] = [];
@@ -115,7 +115,7 @@ export class DepartmentService {
     }
 
     return {
-      departments,
+      data:departments,
       finish
     };
   }
