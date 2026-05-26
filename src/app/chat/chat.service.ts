@@ -1,112 +1,214 @@
-import { Injectable } from '@nestjs/common';
-import OpenAI from 'openai';
-import { EmbeddingService } from '../embedding/embedding.service';
-import { PineconeService } from '../pinecone/pinecone.service';
-import type { ChatResponseDto, ChatSourceDto } from './dto/chat-response.dto';
-
-const CHAT_MODEL = 'gpt-4o-mini' as const;
-const TOP_K = 5;
-const MIN_SCORE = 0.5;
-
-interface ChunkMetadata {
-  documentId?: string;
-  chunkIndex?: number;
-  text?: string;
-  title?: string;
-  sourceLink?: string;
-}
-
-const SYSTEM_PROMPT = `Responda apenas com base nas políticas fornecidas, em inglês ou em português com base na lingua da pergunta. Sempre cite a fonte com o link. Se a pergunta não for sobre políticas, recuse educadamente.`;
+import { Injectable, NotFoundException, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ServiceData, CheckPermSafe } from '../types/general';
+import { DefaultChatDto } from './dto/default-chat.dto';
+import { CreateChatDto } from './dto/create-chat.dto';
+import { ShareChatDto } from './dto/share-chat.dto';
+import { UpdateSharedChatDto } from './dto/update-shared-chat.dto';
+import { RemoveSharedChatDto } from './dto/remove-shared-chat.dto';
+import { FindChatByIdDto } from './dto/find-chat-by-id.dto';
+import { FindPermissionsDto } from './dto/find-permissions.dto';
+import { randomUUID } from 'crypto';
+import { ChatResponse, ChatPermResponse, SharedChatResponse, ChatScrollingResponse, ChatPermissionResponse } from './chat.type';
+import { ChatRepository } from './chat.repository';
 
 @Injectable()
 export class ChatService {
   constructor(
-    private readonly embedding: EmbeddingService,
-    private readonly pinecone: PineconeService,
-    private readonly openai: OpenAI,
+    private readonly prisma: PrismaService,
+    private readonly chatRepository: ChatRepository,
   ) {}
 
-  // RAG flow: embed question → query Pinecone → build context and sources → OpenAI Chat Completions.
-  async ask(question: string): Promise<ChatResponseDto> {
-    const vector = await this.embedding.embed(question);
+  async checkPerm(data: ServiceData<DefaultChatDto>): Promise<ChatPermResponse> {
+    const { userId, bodyData } = data;
+    const { chatId } = bodyData;
 
-    const response = await this.pinecone.query({
-      vector,
-      topK: TOP_K,
-      includeMetadata: true,
+    const chatOwner = await this.prisma.chat.findUnique({
+      where: { chatId },
+      select: {
+        chatId: true,
+        userId: true,
+        title: true,
+      },
     });
 
-    const matches = response.matches ?? [];
-    const withScore = matches.filter(
-      (m): m is typeof m & { score: number } =>
-        m.score != null && m.score >= MIN_SCORE,
-    );
-
-    if (withScore.length === 0) {
-      return {
-        answer:
-          'Não encontrei trechos relevantes nas políticas indexadas para essa pergunta. Por favor, reformule ou pergunte sobre o conteúdo das políticas disponíveis.',
-        sources: [],
-      };
+    if (!chatOwner) {
+      throw new NotFoundException('Chat não encontrado');
     }
 
-    const metadataList = withScore.map(
-      (m) => m.metadata as ChunkMetadata | undefined,
-    );
-    const contextParts = metadataList
-      .filter((m) => m?.text)
-      .map((m) => m!.text as string);
-
-    if (contextParts.length === 0) {
-      return {
-        answer:
-          'Não encontrei trechos relevantes nas políticas indexadas para essa pergunta. Por favor, reformule ou pergunte sobre o conteúdo das políticas disponíveis.',
-        sources: [],
-      };
+    if (chatOwner.userId === userId) {
+      return { ...chatOwner, isOwner: true, roleChatId: null };
     }
 
-    const context = contextParts.join('\n\n---\n\n');
-
-    const uniqueDocumentIds = [
-      ...new Set(
-        metadataList
-          .map((m) => m?.documentId)
-          .filter((id): id is string => typeof id === 'string'),
-      ),
-    ];
-
-    const sourcesByDocumentId = new Map<string, ChatSourceDto>();
-    for (const m of metadataList) {
-      const docId = m?.documentId;
-      const title = m?.title;
-      const sourceLink = m?.sourceLink;
-      if (!docId || !title || !sourceLink) continue;
-      if (sourcesByDocumentId.has(docId)) continue;
-      sourcesByDocumentId.set(docId, {
-        documentTitle: title,
-        sourceLink,
-      });
-    }
-
-    const sources: ChatSourceDto[] = uniqueDocumentIds
-      .map((id) => sourcesByDocumentId.get(id))
-      .filter((s): s is ChatSourceDto => Boolean(s));
-
-    const userMessage = `Contexto (trechos das políticas):\n\n${context}\n\n---\n\nPergunta: ${question}`;
-
-    const completion = await this.openai.chat.completions.create({
-      model: CHAT_MODEL,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userMessage },
-      ],
-      stream: false,
+    const sharedChat = await this.prisma.sharedChat.findUnique({
+      where: {
+        chatId_userId: { chatId, userId },
+      },
+      select: {
+        roleChatId: true,
+      },
     });
 
-    const answer =
-      completion.choices[0]?.message?.content?.trim() ??
-      'Não foi possível gerar uma resposta.';
+    if (!sharedChat) {
+      throw new UnauthorizedException('Sem permissão para acessar este chat');
+    }
 
-    return { answer, sources };
+    return { ...chatOwner, isOwner: false, roleChatId: sharedChat.roleChatId };
   }
+
+  async checkPermSafe(data: ServiceData<DefaultChatDto>): Promise<CheckPermSafe<ChatPermResponse>> {
+    try {
+      const result = await this.checkPerm(data);
+      return { data: result, ok: true };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return { data: null, ok: false, error: 'NotFoundException' };
+      }
+      if (error instanceof UnauthorizedException) {
+        return { data: null, ok: false, error: 'UnauthorizedException' };
+      }
+      return { data: null, ok: false, error: 'Erro ao verificar permissão' };
+    }
+  }
+
+  async create(data: ServiceData<CreateChatDto>):Promise<ChatResponse> {
+    const { userId, bodyData } = data;
+    const { title } = bodyData;
+
+    return await this.prisma.chat.create({
+      data: {
+        chatId: randomUUID(),
+        title: title,
+        userId: userId,
+        createdAt: new Date(),
+        lastUpdateAt: new Date(),
+      },
+      select: {
+        chatId: true,
+        title: true,
+        userId: true,
+        createdAt: true,
+        lastUpdateAt: true,
+      },
+    });
+  }
+
+  async shareChat(data: ServiceData<ShareChatDto>) {
+    const { bodyData } = data;
+    const { chatId, targetUserId, roleChatId } = bodyData;
+
+    const {isOwner} = await this.checkPerm(data)
+    
+    if(!isOwner) {
+      throw new UnauthorizedException("Apenas o proprietário do chat pode compartilhar")
+    }
+
+    const targetUser = await this.prisma.user.findUnique({ where: { userId: targetUserId } });
+    if (!targetUser) throw new NotFoundException('Usuário não encontrado');
+
+    const roleChat = await this.prisma.roleChat.findUnique({ where: { roleChatId } });
+    if (!roleChat) throw new NotFoundException('Regra do chat não encontrada');
+
+    const existing = await this.prisma.sharedChat.findUnique({
+      where: { chatId_userId: { chatId, userId: targetUserId } },
+    });
+    if (existing) throw new ConflictException('Chat já compartilhado com este usuário');
+
+    return this.prisma.sharedChat.create({
+      data: { chatId, userId: targetUserId, roleChatId },
+      select: { chatId: true, userId: true, roleChatId: true,user: true },
+    });
+  }
+
+  async updateSharedChat(data: ServiceData<UpdateSharedChatDto>) {
+    const { bodyData } = data;
+    const { chatId, targetUserId, roleChatId } = bodyData;
+
+    const {isOwner} = await this.checkPerm(data)
+    
+    if(!isOwner) {
+      throw new UnauthorizedException("Apenas o proprietário do chat pode editar o compartilhar")
+    }
+
+    const roleChat = await this.prisma.roleChat.findUnique({ where: { roleChatId } });
+    if (!roleChat) throw new NotFoundException('Role de chat não encontrado');
+
+    const existing = await this.prisma.sharedChat.findUnique({
+      where: { chatId_userId: { chatId, userId: targetUserId } },
+    });
+    if (!existing) throw new NotFoundException('Compartilhamento não encontrado');
+
+    return this.prisma.sharedChat.update({
+      where: { chatId_userId: { chatId, userId: targetUserId } },
+      data: { roleChatId },
+      select: { chatId: true, userId: true, roleChatId: true },
+    });
+  }
+
+  async removeSharedChat(data: ServiceData<RemoveSharedChatDto>) {
+    const { bodyData } = data;
+    const { chatId, targetUserId } = bodyData;
+
+    const {isOwner} = await this.checkPerm(data)
+
+    if(!isOwner) {
+      throw new UnauthorizedException("Apenas o proprietário do chat pode remover o compartilhamento")
+    }
+
+    const existing = await this.prisma.sharedChat.findUnique({
+      where: { chatId_userId: { chatId, userId: targetUserId } },
+    });
+    if (!existing) throw new NotFoundException('Compartilhamento não encontrado');
+
+    await this.prisma.sharedChat.delete({
+      where: { chatId_userId: { chatId, userId: targetUserId } },
+    });
+
+    return { message: 'Compartilhamento removido com sucesso' };
+  }
+
+  async findChatById(data: ServiceData<FindChatByIdDto>): Promise<{data:ChatScrollingResponse[], finished:boolean}> {
+    const { userId, bodyData } = data;
+    const { lastChatId, limit } = bodyData;
+
+    let finished = true;
+
+    const result = await this.chatRepository.findChatScrolling(userId, lastChatId ?? null, limit+1);
+
+    if(result.length === limit + 1) {
+      result.pop();
+      finished = false;
+    }
+
+    return {
+      data: result,
+      finished
+    };
+  }
+
+  async findSharedChatScrolling(data: ServiceData<FindChatByIdDto>): Promise<{data:SharedChatResponse[], finished:boolean}> {
+    const { userId, bodyData } = data;
+    const { lastChatId, limit } = bodyData;
+
+    const result = await this.chatRepository.findSharedChatScrolling(userId, lastChatId ?? null, limit+1);
+    let finished = true;
+
+    if(result.length === limit + 1) {
+      result.pop();
+      finished = false;
+    }
+
+    return {
+      data: result,
+      finished
+    };
+  }
+
+  async findPersonHavePermissionChat(data: ServiceData<FindPermissionsDto>): Promise<ChatPermissionResponse[]> {
+    const { bodyData } = data;
+    const { chatId } = bodyData;
+
+    return await this.chatRepository.findPersonHavePermissionChat(chatId);
+  }
+
 }

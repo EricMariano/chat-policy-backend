@@ -1,14 +1,24 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { ZodValidationPipe } from 'nestjs-zod';
+import cookieParser from 'cookie-parser';
+import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  app.useGlobalPipes(new ZodValidationPipe());
+  app.useGlobalFilters(new AllExceptionsFilter());
+
+  app.use(cookieParser());
+
   app.enableCors({
-    origin: 'http://localhost:3000',
+    origin: 'http://localhost:5173',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
   });
 
   const config = new DocumentBuilder()

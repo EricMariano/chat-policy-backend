@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 export const EMBEDDING_DIMENSIONS = 512;
 
 const EMBEDDING_MODEL = 'text-embedding-3-small' as const;
-
+// futuramente colocar um historico de tokens
 @Injectable()
 export class EmbeddingService {
   constructor(private readonly openai: OpenAI) {}
