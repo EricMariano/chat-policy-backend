@@ -1,12 +1,14 @@
+
+const pdfParse = require('pdf-parse');
 import { BadRequestException } from '@nestjs/common';
-import { PDFParse } from 'pdf-parse';
 
 const ALLOWED_MIME_TYPES = new Set(['application/pdf', 'text/plain']);
+
 
 export async function extractTextFromFile(
   buffer: Buffer,
   mimetype: string,
-  _fileName: string, // eslint-disable-line @typescript-eslint/no-unused-vars
+  _fileName: string,
 ): Promise<string> {
   if (!ALLOWED_MIME_TYPES.has(mimetype)) {
     throw new BadRequestException(
@@ -20,8 +22,7 @@ export async function extractTextFromFile(
 
   if (mimetype === 'application/pdf') {
     try {
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
+      const result = await pdfParse(buffer);
       return (result?.text ?? '').trim();
     } catch (err) {
       throw new BadRequestException(
