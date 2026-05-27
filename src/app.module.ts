@@ -13,6 +13,7 @@ import { MessageModule } from './app/message/message.module';
 import { QueueModule } from './app/queue/queue.module';
 import { ModelIaModule } from './app/model-ia/model-ia.module';
 import { ModelIaKeyModule } from './app/model-ia-key/model-ia-key.module';
+import { PermissionGroupModule } from './app/permission-group/permission-group.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ModelIaKeyModule } from './app/model-ia-key/model-ia-key.module';
     QueueModule,
     ModelIaModule,
     ModelIaKeyModule,
+    PermissionGroupModule,
   ],
   controllers: [AppController],
   providers: [AppService],
