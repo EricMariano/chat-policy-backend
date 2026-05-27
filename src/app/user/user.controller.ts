@@ -19,6 +19,7 @@ import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { FindUserByEmailDto } from './dto/find-user-by-email.dto';
+import { FilterUsersDto } from './dto/filter-users.dto';
 import { ServiceData } from '../types/general';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Roles } from '../role';
@@ -159,9 +160,28 @@ export class UserController {
       bodyData: query,
     };
 
-    console.log(query)
-
     return await this.userService.findUserByEmail(serviceData);
-    
+
+  }
+
+  @Get('pagination')
+  @ApiOperation({ summary: 'Filtrar usuários' })
+  @ApiQuery({ name: 'active', required: false, description: 'Filtro de status ativo/desativo' })
+  @ApiQuery({ name: 'name', required: false, description: 'Filtro de nome (busca parcial)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Limite de resultados (1-100, padrão: 10)' })
+  @ApiQuery({ name: 'offset', required: false, description: 'Offset para paginação (padrão: 0)' })
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.USER)
+  @ApiResponse({ status: 200, description: 'Usuários filtrados com sucesso' })
+  async filterUsers(
+    @User() user: JwtPayload,
+    @Query() query: FilterUsersDto,
+  ) {
+    const serviceData: ServiceData<FilterUsersDto> = {
+      userId: user.userId,
+      typeUserId: user.userTypeId,
+      bodyData: query,
+    };
+    return await this.userService.filterUsers(serviceData);
   }
 }

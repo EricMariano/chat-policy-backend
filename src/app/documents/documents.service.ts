@@ -9,6 +9,9 @@ import { NewVersionDocumentDto } from './dto/new-version-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import { UpdateDocumentSystemsDto } from './dto/update-document-systems.dto';
 import { UpdateDocumentDepartmentsDto } from './dto/update-document-departments.dto';
+import { FindDocumentsDto } from './dto/find-documents.dto';
+import { FindDocumentVersionsDto } from './dto/find-document-versions.dto';
+import { DocumentsRepository } from './documents.repository';
 
 export interface UploadedFile {
   buffer: Buffer;
@@ -35,7 +38,8 @@ export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly queue: QueueService,
-    private readonly minioService: MinioService
+    private readonly minioService: MinioService,
+    private readonly documentsRepository: DocumentsRepository,
   ) {}
 
   private generateFileHash(bufferFile: Buffer): string {
@@ -136,7 +140,7 @@ export class DocumentsService {
       if (title !== documentVersion.document.title) {
         await tx.document.update({
           where: { documentId: documentVersion.documentId },
-          data: { title }
+          data: { title, lastUpdateAt: new Date() }
         });
       }
 
@@ -154,6 +158,12 @@ export class DocumentsService {
           file.buffer,
           file.mimetype
         );
+
+        // Atualiza lastUpdateAt do documento quando o arquivo é alterado
+        await tx.document.update({
+          where: { documentId: documentVersion.documentId },
+          data: { lastUpdateAt: new Date() }
+        });
       }
     });
   }
@@ -169,8 +179,8 @@ export class DocumentsService {
       throw new BadRequestException('Documento não existe');
     }
 
-    const existingVersion = await this.prisma.documentVersion.findUnique({
-      where: { documentId_version: { documentId: fileId, version } }
+    const existingVersion = await this.prisma.documentVersion.findFirst({
+      where: { documentId: fileId, version }
     });
 
     if (existingVersion) {
@@ -208,7 +218,7 @@ export class DocumentsService {
       if (isNewerVersion) {
         await tx.document.update({
           where: { documentId: fileId },
-          data: { lastVersionId: documentVersionId }
+          data: { lastVersionId: documentVersionId, lastUpdateAt: new Date() }
         });
       }
 
@@ -238,6 +248,12 @@ export class DocumentsService {
     const toRemove = [...existingIds].filter((id) => !incomingIds.has(id));
 
     await this.prisma.$transaction([
+      ...(toAdd.length || toRemove.length
+        ? [this.prisma.document.update({
+            where: { documentId },
+            data: { lastUpdateAt: new Date() }
+          })]
+        : []),
       ...(toAdd.length
         ? [this.prisma.documentSystem.createMany({
             data: toAdd.map((systemId) => ({ documentId, systemId })),
@@ -272,6 +288,12 @@ export class DocumentsService {
     const toRemove = [...existingIds].filter((id) => !incomingIds.has(id));
 
     await this.prisma.$transaction([
+      ...(toAdd.length || toRemove.length
+        ? [this.prisma.document.update({
+            where: { documentId },
+            data: { lastUpdateAt: new Date() }
+          })]
+        : []),
       ...(toAdd.length
         ? [this.prisma.documentDepartment.createMany({
             data: toAdd.map((departmentId) => ({ documentId, departmentId })),
@@ -286,6 +308,57 @@ export class DocumentsService {
     ]);
 
     return { added: toAdd, removed: toRemove };
+  }
+
+  async findDocuments(data: ServiceData<FindDocumentsDto>) {
+    const { bodyData } = data;
+    const { lastUpdateAt, lastId, limit } = bodyData;
+
+    const lastUpdateAtDate = lastUpdateAt ? new Date(lastUpdateAt) : null;
+
+    const result = await this.documentsRepository.findDocumentsWithPagination(
+      lastUpdateAtDate,
+      lastId ?? null,
+      limit + 1,
+    );
+
+    let finished = true;
+
+    if (result.length === limit + 1) {
+      result.pop();
+      finished = false;
+    }
+
+    return {
+      data: result,
+      finished,
+    };
+  }
+
+  async findDocumentVersions(data: ServiceData<FindDocumentVersionsDto>) {
+    const { bodyData } = data;
+    const { documentId, lastCreatedAt, lastId, limit } = bodyData;
+
+    const lastCreatedAtDate = lastCreatedAt ? new Date(lastCreatedAt) : null;
+
+    const result = await this.documentsRepository.findDocumentVersionsWithPagination(
+      documentId,
+      lastCreatedAtDate,
+      lastId ?? null,
+      limit + 1,
+    );
+
+    let finished = true;
+
+    if (result.length === limit + 1) {
+      result.pop();
+      finished = false;
+    }
+
+    return {
+      data: result,
+      finished,
+    };
   }
 }
 
