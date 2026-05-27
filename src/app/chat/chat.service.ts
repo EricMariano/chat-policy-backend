@@ -4,6 +4,7 @@ import { ServiceData, CheckPermSafe } from '../types/general';
 import { DefaultChatDto } from './dto/default-chat.dto';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { ShareChatDto } from './dto/share-chat.dto';
+import { UpdateChatDto } from './dto/update-chat.dto';
 import { UpdateSharedChatDto } from './dto/update-shared-chat.dto';
 import { RemoveSharedChatDto } from './dto/remove-shared-chat.dto';
 import { FindChatByIdDto } from './dto/find-chat-by-id.dto';
@@ -75,12 +76,38 @@ export class ChatService {
     const { userId, bodyData } = data;
     const { title } = bodyData;
 
-    return await this.prisma.chat.create({
+    return  await this.prisma.chat.create({
       data: {
         chatId: randomUUID(),
         title: title,
         userId: userId,
         createdAt: new Date(),
+        lastUpdateAt: new Date(),
+      },
+      select: {
+        chatId: true,
+        title: true,
+        userId: true,
+        createdAt: true,
+        lastUpdateAt: true,
+      },
+    });
+  }
+
+  async update(data: ServiceData<UpdateChatDto>): Promise<ChatResponse> {
+    const { bodyData } = data;
+    const { chatId, title } = bodyData;
+
+    const { isOwner } = await this.checkPerm(data);
+
+    if (!isOwner) {
+      throw new UnauthorizedException("Apenas o proprietário do chat pode editar o nome")
+    }
+
+    return await this.prisma.chat.update({
+      where: { chatId },
+      data: {
+        title,
         lastUpdateAt: new Date(),
       },
       select: {
