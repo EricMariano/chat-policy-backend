@@ -12,6 +12,7 @@ import { UpdateDocumentDepartmentsDto } from './dto/update-document-departments.
 import { FindDocumentsDto } from './dto/find-documents.dto';
 import { FindDocumentVersionsDto } from './dto/find-document-versions.dto';
 import { DocumentsRepository } from './documents.repository';
+import { PineconeService } from '../pinecone/pinecone.service';
 
 export interface UploadedFile {
   buffer: Buffer;
@@ -40,6 +41,7 @@ export class DocumentsService {
     private readonly queue: QueueService,
     private readonly minioService: MinioService,
     private readonly documentsRepository: DocumentsRepository,
+    private readonly pineconeService: PineconeService,
   ) {}
 
   private generateFileHash(bufferFile: Buffer): string {
@@ -58,6 +60,16 @@ export class DocumentsService {
       if (diff !== 0) return diff;
     }
     return 0;
+  }
+
+  private async updatePineconeDocumentMetadata(
+    documentId: string,
+    metadata: Record<string, string[]>,
+  ): Promise<void> {
+    await this.pineconeService.update({
+      filter: { documentId: { $eq: documentId } },
+      metadata,
+    } as Parameters<PineconeService['update']>[0]);
   }
 
   async createDocument(file: UploadedFile, body: ServiceData<CreateDocumentDto>) {
@@ -267,6 +279,12 @@ export class DocumentsService {
         : []),
     ]);
 
+    if (toAdd.length || toRemove.length) {
+      await this.updatePineconeDocumentMetadata(documentId, {
+        systemIds: systemIds.map(String),
+      });
+    }
+
     return { added: toAdd, removed: toRemove };
   }
 
@@ -306,6 +324,12 @@ export class DocumentsService {
           })]
         : []),
     ]);
+
+    if (toAdd.length || toRemove.length) {
+      await this.updatePineconeDocumentMetadata(documentId, {
+        departmentIds: departmentIds.map(String),
+      });
+    }
 
     return { added: toAdd, removed: toRemove };
   }
