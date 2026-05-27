@@ -17,7 +17,6 @@ import {
   MaxFileSizeValidator,
   ParseFilePipe,
 } from '@nestjs/common';
-import type { UploadDocumentDto } from './dto/upload-document.dto';
 import { UploadDocumentRequestDto } from './dto/upload-document-request.dto';
 import { DocumentsService } from './documents.service';
 import { ALLOWED_UPLOAD_MIME_TYPES } from './document-upload.util';
@@ -30,6 +29,7 @@ import { User } from '../user';
 import type { JwtPayload } from '../types/jwt';
 import { UpdateDocumentSystemsDto } from './dto/update-document-systems.dto';
 import { UpdateDocumentDepartmentsDto } from './dto/update-document-departments.dto';
+import { UpdateDocumentDto } from './dto/update-document.dto';
 import { ServiceData } from '../types/general';
 import { NewVersionRequestDto } from './dto/new-version-request.dto';
 import { FindDocumentsDto } from './dto/find-documents.dto';
@@ -68,7 +68,7 @@ export class DocumentsController {
     @Body() body: CreateDocumentDto,
     @User() user:JwtPayload
   ) {
-    return this.documents.createDocument(
+    return await this.documents.createDocument(
       {
         buffer: file.buffer,
         mimetype: file.mimetype,
@@ -120,6 +120,72 @@ export class DocumentsController {
         typeUserId: user.userTypeId,
         userId: user.userId,
       }
+    );
+  }
+
+  @Put()
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Arquivo opcional para substituir o arquivo da versão',
+        },
+        documentVersionId: {
+          type: 'string',
+          format: 'uuid',
+          description: 'ID da versão do documento',
+        },
+        title: {
+          type: 'string',
+          description: 'Novo título do documento',
+        },
+      },
+      required: ['documentVersionId', 'title'],
+    },
+  })
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Atualiza dados de uma versão de documento' })
+  @ApiResponse({ status: 200, description: 'Documento atualizado com sucesso' })
+  @ApiResponse({ status: 400, description: 'Versão do documento não encontrada' })
+  async updateDocument(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: MAX_UPLOAD_BYTES }),
+          new FileTypeValidator({
+            fileType: new RegExp(
+              `^(${ALLOWED_UPLOAD_MIME_TYPES.map((m) => m.replace(/\//g, '\\/')).join('|')})$`,
+            ),
+          }),
+        ],
+        fileIsRequired: false,
+      }),
+    )
+    file: Express.Multer.File | undefined,
+    @Body() body: UpdateDocumentDto,
+    @User() user: JwtPayload
+  ) {
+    const serviceData: ServiceData<UpdateDocumentDto> = {
+      userId: user.userId,
+      typeUserId: user.userTypeId,
+      bodyData: body,
+    };
+
+    return await this.documents.updateDocument(
+      file
+        ? {
+            buffer: file.buffer,
+            mimetype: file.mimetype,
+            originalname: file.originalname,
+          }
+        : null,
+      serviceData,
     );
   }
 

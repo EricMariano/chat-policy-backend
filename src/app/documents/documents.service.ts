@@ -160,24 +160,30 @@ export class DocumentsService {
       if (file) {
         const newHash = this.generateFileHash(file.buffer);
 
-        await tx.documentVersion.update({
-          where: { documentVersionId },
-          data: { hash: newHash }
-        });
-
-        await this.minioService.uploadFile(
-          documentVersion.documentPath,
-          file.buffer,
-          file.mimetype
-        );
-
-        // Atualiza lastUpdateAt do documento quando o arquivo é alterado
-        await tx.document.update({
-          where: { documentId: documentVersion.documentId },
-          data: { lastUpdateAt: new Date() }
-        });
+        if(documentVersion.hash !== newHash) {
+          await tx.documentVersion.update({
+            where: { documentVersionId },
+            data: { hash: newHash }
+          });
+  
+          await this.minioService.uploadFile(
+            documentVersion.documentPath,
+            file.buffer,
+            file.mimetype
+          );
+  
+          // Atualiza lastUpdateAt do documento quando o arquivo é alterado
+          await tx.document.update({
+            where: { documentId: documentVersion.documentId },
+            data: { lastUpdateAt: new Date() }
+          });
+          // alterar os chunks desse arquivo no pinecone
+          await this.queue.addProcessUpdateDocumentJob({ documentVersionId });
+          
+        }
       }
     });
+
   }
 
   async newVersionDocument(file: UploadedFile, body: ServiceData<NewVersionDocumentDto>) {

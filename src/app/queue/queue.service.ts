@@ -56,4 +56,14 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async addProcessUpdateDocumentJob(data: JobDocumentDto) {
+    await this.documentQueue.add('process-update-document', data, {
+      attempts: 5,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+    });
+  }
+
 }

@@ -1,8 +1,9 @@
 export interface ChatResponse {
   chatId: string;
   title: string;
-  createdAt: Date;
-  lastUpdateAt: Date;
+  createdAt: Date|null;
+  userId:number;
+  lastUpdateAt: Date|null;
 }
 
 export interface ChatPermResponse {
