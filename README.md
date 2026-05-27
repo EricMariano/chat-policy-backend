@@ -60,6 +60,29 @@ PINECONE_ENVIRONMENT=...   # presente no .env.example, mas nao e referenciado no
 PINECONE_INDEX_NAME=...
 ```
 
+### Desenvolvimento local
+
+O projeto roda a API NestJS localmente e usa Docker Compose apenas para a infraestrutura:
+
+```bash
+docker compose up -d
+npm install
+npm run prisma:push
+npm run prisma:generate
+npm run start:dev
+```
+
+Servicos locais:
+
+- API: `http://localhost:8080`
+- Swagger: `http://localhost:8080/api`
+- Postgres: `localhost:5432`, database `rag_policy`
+- Redis: `localhost:6379`
+- MinIO API: `http://localhost:9000`
+- MinIO Console: `http://localhost:9001`
+
+O arquivo `.env.example` ja contem valores compativeis com o Compose. Para fluxos de RAG, configure tambem `OPENAI_API_KEY`, `PINECONE_API_KEY` e `PINECONE_INDEX_NAME`.
+
 ### CORS e Swagger
 
 Em `src/main.ts`:
