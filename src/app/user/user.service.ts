@@ -13,8 +13,9 @@ import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { FindUserByEmailDto } from './dto/find-user-by-email.dto';
+import { FilterUsersDto } from './dto/filter-users.dto';
 import { UserRepository } from './user.repository';
-import { UserByEmailResponse } from './user.type';
+import { UserByEmailResponse, UserFilterResponse } from './user.type';
 
 @Injectable()
 export class UserService {
@@ -230,5 +231,32 @@ export class UserService {
     const { email } = bodyData;
 
     return await this.userRepository.findByEmail(email);
+  }
+
+  async filterUsers(data: ServiceData<FilterUsersDto>): Promise<{data:UserFilterResponse[],pages:number}> {
+    const { bodyData } = data;
+    const { active, name, limit, currentPage } = bodyData;
+
+    const offset = (currentPage - 1) * limit;
+
+    const count = await this.userRepository.countUsersWithFilters({
+      active,
+      name,
+    });
+
+    const users = await this.userRepository.findUsersWithFilters({
+      active,
+      name,
+      limit,
+      offset,
+    });
+
+    const totalUsers = Number(count.totalUsers);
+    const pages = Math.ceil(totalUsers / limit);
+
+    return {
+      data: users,
+      pages,
+    };
   }
 }

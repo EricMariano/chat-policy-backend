@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,9 +6,244 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─────────────────────────────────────────────
-// ENUMS
-// ─────────────────────────────────────────────
+model TypeUser {
+  typeUserId Int     @id @default(autoincrement()) @map("type_user_id")
+  name       String  @db.VarChar(80)
+  active     Boolean @default(true)
+  users      User[]  @relation("UserTypeUser")
+
+  @@map("tb_type_user")
+}
+
+model User {
+  userId                   Int                   @id @default(autoincrement()) @map("user_id")
+  email                    String                @unique @db.VarChar(250)
+  name                     String                @db.VarChar(150)
+  password                 String                @db.VarChar(80)
+  registeredAt             DateTime              @default(now()) @map("registered_at") @db.Timestamp(0)
+  typeUserId               Int                   @map("type_user_id")
+  active                   Boolean               @default(true)
+  chats                    Chat[]
+  authoredDocuments        Document[]            @relation("DocumentAuthor")
+  authoredDocumentVersions DocumentVersion[]     @relation("DocumentVersionAuthor")
+  messages                 Message[]
+  permissionGroupUsers     PermissionGroupUser[]
+  sharedChats              SharedChat[]
+  typeUser                 TypeUser              @relation("UserTypeUser", fields: [typeUserId], references: [typeUserId])
+
+  @@index([email])
+  @@index([typeUserId])
+  @@map("tb_user")
+}
+
+model Department {
+  departmentId               Int                         @id @default(autoincrement()) @map("department_id")
+  departmentNm               String                      @map("department_nm") @db.VarChar(100)
+  acronym                    String                      @unique @db.VarChar(5)
+  active                     Boolean                     @default(true)
+  documentDepartments        DocumentDepartment[]
+  permissionGroupDepartments PermissionGroupDepartment[]
+
+  @@map("tb_department")
+}
+
+model System {
+  systemId               Int                     @id @default(autoincrement()) @map("system_id")
+  systemNm               String                  @map("system_nm") @db.VarChar(80)
+  active                 Boolean                 @default(true)
+  acronym                String                  @unique @db.VarChar(5)
+  documentSystems        DocumentSystem[]
+  permissionGroupSystems PermissionGroupSystem[]
+
+  @@map("tb_system")
+}
+
+model Document {
+  documentId          String               @id(map: "tb_file_pkey") @default(uuid()) @map("document_id") @db.Uuid
+  title               String?              @db.VarChar(150)
+  autorId             Int                  @map("autor_id")
+  active              Boolean              @default(true)
+  lastVersionId       String?              @map("last_version_id") @db.Uuid
+  lastUpdateAt        DateTime             @default(now()) @map("last_update_at") @db.Timestamp(6)
+  autor               User                 @relation("DocumentAuthor", fields: [autorId], references: [userId], map: "tb_file_autor_id_fkey")
+  documentDepartments DocumentDepartment[]
+  documentSystems     DocumentSystem[]
+  versions            DocumentVersion[]    @relation("DocumentVersions")
+
+  @@index([autorId], map: "tb_file_autor_id_idx")
+  @@map("tb_document")
+}
+
+model DocumentVersion {
+  documentVersionId String          @unique(map: "tb_document_version_unique") @default(uuid()) @map("document_version_id") @db.Uuid
+  documentId        String          @map("document_id") @db.Uuid
+  version           String          @db.VarChar(10)
+  hash              String          @db.VarChar(80)
+  documentPath      String          @map("document_path")
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamp(6)
+  active            Boolean         @default(true)
+  status            DocumentStatus? @default(PROCESSING)
+  autorId           Int             @map("autor_id")
+  document          Document        @relation("DocumentVersions", fields: [documentId], references: [documentId], onDelete: NoAction, onUpdate: NoAction, map: "tb_document_version_tb_document_fk")
+  autor             User            @relation("DocumentVersionAuthor", fields: [autorId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "tb_document_version_tb_user_fk")
+
+  @@map("tb_document_version")
+}
+
+model DocumentSystem {
+  systemId   Int      @map("system_id")
+  documentId String   @map("document_id") @db.Uuid
+  document   Document @relation(fields: [documentId], references: [documentId], map: "tb_file_system_file_id_fkey")
+  system     System   @relation(fields: [systemId], references: [systemId], map: "tb_file_system_system_id_fkey")
+
+  @@id([systemId, documentId], map: "tb_file_system_pkey")
+  @@map("tb_document_system")
+}
+
+model DocumentDepartment {
+  documentId   String     @map("document_id") @db.Uuid
+  departmentId Int        @map("department_id")
+  department   Department @relation(fields: [departmentId], references: [departmentId], map: "tb_file_department_department_id_fkey")
+  document     Document   @relation(fields: [documentId], references: [documentId], map: "tb_file_department_file_id_fkey")
+
+  @@id([documentId, departmentId], map: "tb_file_department_pkey")
+  @@map("tb_document_department")
+}
+
+model Chat {
+  chatId       String       @id @default(uuid()) @map("chat_id") @db.Uuid
+  title        String       @db.VarChar(100)
+  userId       Int          @map("user_id")
+  createdAt    DateTime?    @map("created_at") @db.Timestamp(6)
+  lastUpdateAt DateTime?    @map("last_update_at") @db.Timestamp(6)
+  user         User         @relation(fields: [userId], references: [userId])
+  messages     Message[]
+  sharedChats  SharedChat[]
+
+  @@map("tb_chat")
+}
+
+model RoleChat {
+  roleChatId  Int          @id @map("role_chat_id")
+  roleChatNm  String       @map("role_chat_nm") @db.VarChar(80)
+  active      Boolean      @default(true)
+  sharedChats SharedChat[]
+
+  @@map("tb_role_chat")
+}
+
+model SharedChat {
+  chatId     String   @map("chat_id") @db.Uuid
+  userId     Int      @map("user_id")
+  roleChatId Int      @map("role_chat_id")
+  chat       Chat     @relation(fields: [chatId], references: [chatId])
+  roleChat   RoleChat @relation(fields: [roleChatId], references: [roleChatId])
+  user       User     @relation(fields: [userId], references: [userId])
+
+  @@id([chatId, userId])
+  @@map("tb_shared_chat")
+}
+
+model Message {
+  messageId    String         @id @default(uuid()) @map("message_id") @db.Uuid
+  chatId       String         @map("chat_id") @db.Uuid
+  messageText  String         @map("message_text")
+  sendAt       DateTime       @map("send_at") @db.Timestamp(0)
+  userId       Int?           @map("user_id")
+  modelIaId    Int?           @map("model_ia_id")
+  status       MessageStatus? @default(PROCESSING)
+  fileMessages FileMessage[]
+  chat         Chat           @relation(fields: [chatId], references: [chatId])
+  modelIa      ModelIa?       @relation(fields: [modelIaId], references: [modelIaId], onDelete: NoAction, onUpdate: NoAction, map: "tb_message_tb_model_ia_fk")
+  user         User?          @relation(fields: [userId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "tb_message_tb_user_fk")
+  tokenHistory TokenHistory?
+
+  @@index([messageText])
+  @@index([chatId])
+  @@map("tb_message")
+}
+
+model FileMessage {
+  fileId    String   @id @default(uuid()) @map("file_id") @db.Uuid
+  filePath  String   @map("file_path") @db.VarChar(255)
+  messageId String   @map("message_id") @db.Uuid
+  sendDt    DateTime @map("send_dt") @db.Timestamp(0)
+  message   Message  @relation(fields: [messageId], references: [messageId])
+
+  @@index([messageId])
+  @@map("tb_file_message")
+}
+
+model ModelIa {
+  modelIaId   Int          @id @default(autoincrement()) @map("model_ia_id")
+  modelNm     String       @map("model_nm") @db.VarChar(100)
+  active      Boolean      @default(true)
+  messages    Message[]
+  modelIaKeys ModelIaKey[]
+
+  @@map("tb_model_ia")
+}
+
+model ModelIaKey {
+  modelIaId Int     @map("model_ia_id")
+  modelKey  String  @map("model_key") @db.Uuid
+  qtnToken  Decimal @map("qtn_token") @db.Decimal(16, 2)
+  active    Boolean @default(true)
+  modelIa   ModelIa @relation(fields: [modelIaId], references: [modelIaId])
+
+  @@id([modelIaId, modelKey])
+  @@map("tb_model_ia_key")
+}
+
+model TokenHistory {
+  messageId        String   @id @map("message_id") @db.Uuid
+  amountTokenSpent Decimal  @map("amount_token_spent") @db.Decimal(8, 2)
+  registerDt       DateTime @map("register_dt") @db.Timestamp(0)
+  message          Message  @relation(fields: [messageId], references: [messageId])
+
+  @@map("tb_token_history")
+}
+
+model PermissionGroup {
+  permissionGroupId          Int                         @id @default(autoincrement()) @map("permission_group_id")
+  permissionGroupNm          String                      @map("permission_group_nm") @db.VarChar(100)
+  active                     Boolean                     @default(true)
+  permissionGroupDepartments PermissionGroupDepartment[]
+  permissionGroupSystems     PermissionGroupSystem[]
+  permissionGroupUsers       PermissionGroupUser[]
+
+  @@map("tb_permission_group")
+}
+
+model PermissionGroupUser {
+  permissionGroupId Int             @map("permission_group_id")
+  userId            Int             @map("user_id")
+  permissionGroup   PermissionGroup @relation(fields: [permissionGroupId], references: [permissionGroupId])
+  user              User            @relation(fields: [userId], references: [userId])
+
+  @@id([permissionGroupId, userId])
+  @@map("tb_permission_group_user")
+}
+
+model PermissionGroupDepartment {
+  permissionGroupId Int             @map("permission_group_id")
+  departmentId      Int             @map("department_id")
+  department        Department      @relation(fields: [departmentId], references: [departmentId])
+  permissionGroup   PermissionGroup @relation(fields: [permissionGroupId], references: [permissionGroupId])
+
+  @@id([permissionGroupId, departmentId])
+  @@map("tb_permission_group_department")
+}
+
+model PermissionGroupSystem {
+  permissionGroupId Int             @map("permission_group_id")
+  systemId          Int             @map("system_id")
+  permissionGroup   PermissionGroup @relation(fields: [permissionGroupId], references: [permissionGroupId])
+  system            System          @relation(fields: [systemId], references: [systemId])
+
+  @@id([permissionGroupId, systemId])
+  @@map("tb_permission_group_system")
+}
 
 enum DocumentStatus {
   PROCESSING
@@ -27,299 +259,4 @@ enum MessageStatus {
   ERROR
 
   @@map("message_status")
-}
-
-// ─────────────────────────────────────────────
-// USER & AUTH
-// ─────────────────────────────────────────────
-
-model TypeUser {
-  typeUserId Int     @id @default(autoincrement()) @map("type_user_id")
-  name       String  @db.VarChar(80)
-  active     Boolean @default(true)
-
-  users User[] @relation("UserTypeUser")
-
-  @@map("tb_type_user")
-}
-
-model User {
-  userId       Int      @id @default(autoincrement()) @map("user_id")
-  email        String   @db.VarChar(250)
-  name         String   @db.VarChar(150)
-  password     String   @db.VarChar(80)
-  registeredAt DateTime @default(now()) @db.Timestamp() @map("registered_at")
-  typeUserId   Int      @map("type_user_id")
-  active       Boolean  @default(true)
-
-  typeUser TypeUser @relation("UserTypeUser", fields: [typeUserId], references: [typeUserId])
-
-  authoredDocuments         Document[]        @relation("DocumentAuthor")
-  authoredDocumentVersions DocumentVersion[] @relation("DocumentVersionAuthor")
-  chats                     Chat[]
-  sharedChats               SharedChat[]
-  messages                  Message[]
-  permissionGroupUsers     PermissionGroupUser[]
-
-  @@map("tb_user")
-}
-
-// ─────────────────────────────────────────────
-// DEPARTMENT & SYSTEM
-// ─────────────────────────────────────────────
-
-model Department {
-  departmentId   Int     @id @default(autoincrement()) @map("department_id")
-  departmentNm   String  @db.VarChar(100) @map("department_nm")
-  acronym        String  @db.VarChar(5)
-  active         Boolean @default(true)
-
-  documentDepartments       DocumentDepartment[]
-  permissionGroupDepartments PermissionGroupDepartment[]
-
-  @@map("tb_department")
-}
-
-model System {
-  systemId Int     @id @default(autoincrement()) @map("system_id")
-  systemNm String  @db.VarChar(80) @map("system_nm")
-  acronym  String  @unique @db.VarChar(5)
-  active   Boolean @default(true)
-
-  documentSystems       DocumentSystem[]
-  permissionGroupSystems PermissionGroupSystem[]
-
-  @@map("tb_system")
-}
-
-// ─────────────────────────────────────────────
-// DOCUMENTS
-// ─────────────────────────────────────────────
-
-model Document {
-  documentId     String   @id @default(uuid()) @db.Uuid @map("document_id")
-  title          String   @db.VarChar(150)
-  autorId        Int      @map("autor_id")
-  active         Boolean
-  lastVersionId  String?  @db.Uuid @map("last_version_id")
-
-  autor        User             @relation("DocumentAuthor", fields: [autorId], references: [userId])
-  lastVersion  DocumentVersion? @relation("DocumentLastVersion", fields: [lastVersionId], references: [documentVersionId])
-
-  versions             DocumentVersion[]    @relation("DocumentVersions")
-  documentSystems     DocumentSystem[]
-  documentDepartments DocumentDepartment[]
-
-  @@map("tb_document")
-}
-
-model DocumentVersion {
-  documentVersionId String         @id @default(uuid()) @db.Uuid @map("document_version_id")
-  documentId        String         @db.Uuid @map("document_id")
-  version            String         @db.VarChar(10)
-  hash               String         @db.VarChar(80)
-  documentPath       String         @db.Text @map("document_path")
-  autorId            Int            @map("autor_id")
-  createdAt          DateTime       @default(now()) @db.Timestamp() @map("created_at")
-  active             Boolean
-  status             DocumentStatus
-
-  document Document @relation("DocumentVersions", fields: [documentId], references: [documentId])
-  autor    User     @relation("DocumentVersionAuthor", fields: [autorId], references: [userId])
-
-  documentAsLast Document[] @relation("DocumentLastVersion")
-
-  @@unique([documentId, version])
-  @@map("tb_document_version")
-}
-
-// N:N — Document <-> System
-model DocumentSystem {
-  systemId   Int    @map("system_id")
-  documentId String @db.Uuid @map("document_id")
-
-  system   System   @relation(fields: [systemId], references: [systemId])
-  document Document @relation(fields: [documentId], references: [documentId])
-
-  @@id([systemId, documentId])
-  @@map("tb_document_system")
-}
-
-// N:N — Document <-> Department
-model DocumentDepartment {
-  documentId   String @db.Uuid @map("document_id")
-  departmentId Int    @map("department_id")
-
-  document   Document   @relation(fields: [documentId], references: [documentId])
-  department Department @relation(fields: [departmentId], references: [departmentId])
-
-  @@id([documentId, departmentId])
-  @@map("tb_document_department")
-}
-
-// ─────────────────────────────────────────────
-// CHAT
-// ─────────────────────────────────────────────
-
-model Chat {
-  chatId        String   @id @default(uuid()) @db.Uuid @map("chat_id")
-  title         String   @db.VarChar(100)
-  userId        Int      @map("user_id")
-  createdAt     DateTime @db.Timestamp() @map("created_at")
-  lastUpdateAt  DateTime @db.Timestamp() @map("last_update_at")
-
-  user         User         @relation(fields: [userId], references: [userId])
-  sharedChats  SharedChat[]
-  messages     Message[]
-
-  @@map("tb_chat")
-}
-
-model RoleChat {
-  roleChatId Int     @id @default(autoincrement()) @map("role_chat_id")
-  roleChatNm String  @db.VarChar(80) @map("role_chat_nm")
-  active     Boolean @default(true)
-
-  sharedChats SharedChat[]
-
-  @@map("tb_role_chat")
-}
-
-model SharedChat {
-  chatId      String @db.Uuid @map("chat_id")
-  userId      Int    @map("user_id")
-  roleChatId  Int    @map("role_chat_id")
-
-  chat     Chat     @relation(fields: [chatId], references: [chatId])
-  user     User     @relation(fields: [userId], references: [userId])
-  roleChat RoleChat @relation(fields: [roleChatId], references: [roleChatId])
-
-  @@id([chatId, userId])
-  @@map("tb_shared_chat")
-}
-
-// ─────────────────────────────────────────────
-// MESSAGES
-// ─────────────────────────────────────────────
-
-model Message {
-  messageId   String        @id @default(uuid()) @db.Uuid @map("message_id")
-  chatId      String        @db.Uuid @map("chat_id")
-  messageText String        @db.Text @map("message_text")
-  sendAt      DateTime      @db.Timestamp() @map("send_at")
-  userId      Int?          @map("user_id")
-  modelIaId  Int?          @map("model_ia_id")
-  status      MessageStatus?
-
-  chat     Chat      @relation(fields: [chatId], references: [chatId])
-  user     User?     @relation(fields: [userId], references: [userId])
-  modelIa  ModelIa?  @relation(fields: [modelIaId], references: [modelIaId])
-
-  fileMessages FileMessage[]
-  tokenHistory TokenHistory?
-
-  @@index([chatId, sendAt])
-  @@index([messageText])
-  @@map("tb_message")
-}
-
-model FileMessage {
-  fileId    String   @id @default(uuid()) @db.Uuid @map("file_id")
-  filePath  String   @db.VarChar(255) @map("file_path")
-  messageId String   @db.Uuid @map("message_id")
-  sendDt    DateTime @db.Timestamp() @map("send_dt")
-
-  message Message @relation(fields: [messageId], references: [messageId])
-
-  @@index([messageId])
-  @@map("tb_file_message")
-}
-
-// ─────────────────────────────────────────────
-// AI MODELS
-// ─────────────────────────────────────────────
-
-model ModelIa {
-  modelIaId Int     @id @default(autoincrement()) @map("model_ia_id")
-  modelNm   String  @db.VarChar(100) @map("model_nm")
-  active    Boolean @default(true)
-
-  messages       Message[]
-  modelIaKeys  ModelIaKey[]
-
-  @@map("tb_model_ia")
-}
-
-model ModelIaKey {
-  modelIaId Int    @map("model_ia_id")
-  modelKey  String @db.Uuid @map("model_key")
-  qtnToken  Decimal @db.Decimal(16, 2) @map("qtn_token")
-  active    Boolean @default(true)
-
-  modelIa ModelIa @relation(fields: [modelIaId], references: [modelIaId])
-
-  @@id([modelIaId, modelKey])
-  @@map("tb_model_ia_key")
-}
-
-model TokenHistory {
-  messageId         String   @id @db.Uuid @map("message_id")
-  amountTokenSpent  Decimal  @db.Decimal(8, 2) @map("amount_token_spent")
-  registerDt        DateTime @db.Timestamp() @map("register_dt")
-
-  message Message @relation(fields: [messageId], references: [messageId])
-
-  @@map("tb_token_history")
-}
-
-// ─────────────────────────────────────────────
-// PERMISSIONS
-// ─────────────────────────────────────────────
-
-model PermissionGroup {
-  permissionGroupId Int     @id @default(autoincrement()) @map("permission_group_id")
-  permissionGroupNm String  @db.VarChar(100) @map("permission_group_nm")
-  active            Boolean @default(true)
-
-  permissionGroupUsers       PermissionGroupUser[]
-  permissionGroupDepartments PermissionGroupDepartment[]
-  permissionGroupSystems     PermissionGroupSystem[]
-
-  @@map("tb_permission_group")
-}
-
-// N:N — PermissionGroup <-> User
-model PermissionGroupUser {
-  permissionGroupId Int @map("permission_group_id")
-  userId             Int @map("user_id")
-
-  permissionGroup PermissionGroup @relation(fields: [permissionGroupId], references: [permissionGroupId])
-  user             User            @relation(fields: [userId], references: [userId])
-
-  @@id([permissionGroupId, userId])
-  @@map("tb_permission_group_user")
-}
-
-// N:N — PermissionGroup <-> Department
-model PermissionGroupDepartment {
-  permissionGroupId Int @map("permission_group_id")
-  departmentId      Int @map("department_id")
-
-  permissionGroup PermissionGroup @relation(fields: [permissionGroupId], references: [permissionGroupId])
-  department       Department      @relation(fields: [departmentId], references: [departmentId])
-
-  @@id([permissionGroupId, departmentId])
-  @@map("tb_permission_group_department")
-}
-
-// N:N — PermissionGroup <-> System
-model PermissionGroupSystem {
-  permissionGroupId Int @map("permission_group_id")
-  systemId         Int @map("system_id")
-
-  permissionGroup PermissionGroup @relation(fields: [permissionGroupId], references: [permissionGroupId])
-  system           System          @relation(fields: [systemId], references: [systemId])
-
-  @@id([permissionGroupId, systemId])
-  @@map("tb_permission_group_system")
 }

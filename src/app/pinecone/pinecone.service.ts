@@ -18,6 +18,10 @@ export class PineconeService {
     await this.index.upsert(options);
   }
 
+  async update(options: Parameters<Index['update']>[0]): Promise<void> {
+    await this.index.update(options);
+  }
+
   async query(options: QueryOptions): Promise<QueryResponse> {
     return this.index.query(options);
   }

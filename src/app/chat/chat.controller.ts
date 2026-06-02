@@ -34,6 +34,7 @@ import { RemoveSharedChatDto } from './dto/remove-shared-chat.dto';
 import { FindChatByIdDto } from './dto/find-chat-by-id.dto';
 import { FindPermissionsDto } from './dto/find-permissions.dto';
 import { CreateChatDto } from './dto/create-chat.dto';
+import { UpdateChatDto } from './dto/update-chat.dto';
 
 @ApiTags('chat')
 @Controller('chat')
@@ -89,6 +90,23 @@ export class ChatController {
       bodyData: body,
     };
     return await this.chatService.create(serviceData);
+  }
+
+  @Patch()
+  @ApiOperation({ summary: 'Editar nome do chat' })
+  @ApiBody({ type: UpdateChatDto })
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.USER)
+  @ApiResponse({ status: 200, description: 'Nome do chat atualizado com sucesso' })
+  @ApiResponse({ status: 401, description: 'Sem permissão para editar este chat' })
+  @ApiResponse({ status: 404, description: 'Chat não encontrado' })
+  async updateChat(@User() user: JwtPayload, @Body() body: UpdateChatDto) {
+    const serviceData: ServiceData<UpdateChatDto> = {
+      userId: user.userId,
+      typeUserId: user.userTypeId,
+      bodyData: body,
+    };
+    return await this.chatService.update(serviceData);
   }
 
   @Get('scrolling')
