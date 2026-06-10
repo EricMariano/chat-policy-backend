@@ -6,6 +6,7 @@ import {
   Get,
   Query,
   Param,
+  ParseUUIDPipe,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -33,7 +34,10 @@ import { UpdateDocumentDto } from './dto/update-document.dto';
 import { ServiceData } from '../types/general';
 import { NewVersionRequestDto } from './dto/new-version-request.dto';
 import { FindDocumentsDto } from './dto/find-documents.dto';
-import { FindDocumentVersionsDto } from './dto/find-document-versions.dto';
+import {
+  FindDocumentVersionsDto,
+  FindDocumentVersionsQueryDto,
+} from './dto/find-document-versions.dto';
 
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB
 
@@ -241,6 +245,17 @@ export class DocumentsController {
     return this.documents.findDocuments(serviceData);
   }
 
+  @Get(':documentId')
+  @ApiOperation({ summary: 'Buscar detalhes de um documento' })
+  @ApiParam({ name: 'documentId', description: 'ID do documento (UUID)' })
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.USER)
+  @ApiResponse({ status: 200, description: 'Documento encontrado com sucesso' })
+  @ApiResponse({ status: 404, description: 'Documento não encontrado' })
+  async findDocumentById(@Param('documentId', ParseUUIDPipe) documentId: string) {
+    return this.documents.findDocumentById(documentId);
+  }
+
   @Get(':documentId/versions')
   @ApiOperation({ summary: 'Listar versões de um documento com paginação' })
   @ApiParam({ name: 'documentId', description: 'ID do documento (UUID)' })
@@ -252,8 +267,8 @@ export class DocumentsController {
   @ApiResponse({ status: 200, description: 'Versões listadas com sucesso' })
   async findDocumentVersions(
     @User() user: JwtPayload,
-    @Param('documentId') documentId: string,
-    @Query() query: Omit<FindDocumentVersionsDto, 'documentId'>,
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Query() query: FindDocumentVersionsQueryDto,
   ) {
     const serviceData: ServiceData<FindDocumentVersionsDto> = {
       userId: user.userId,

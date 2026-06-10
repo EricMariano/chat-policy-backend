@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { DocumentWithAuthorResponse, DocumentVersionWithAuthorResponse } from './documents.type';
+import {
+  DocumentDetailResponse,
+  DocumentVersionWithAuthorResponse,
+  DocumentWithAuthorResponse,
+} from './documents.type';
 
 @Injectable()
 export class DocumentsRepository {
@@ -17,9 +21,20 @@ export class DocumentsRepository {
         d.title,
         d.last_update_at AS "lastUpdateAt",
         d.active,
-        u.name AS "authorName"
+        u.name AS "authorName",
+        CASE
+          WHEN dv.document_version_id IS NULL THEN NULL
+          ELSE json_build_object(
+            'documentVersionId', dv.document_version_id,
+            'version', dv.version,
+            'status', dv.status,
+            'active', dv.active,
+            'createdAt', dv.created_at
+          )
+        END AS "lastVersion"
       FROM tb_document d
       INNER JOIN tb_user u ON d.autor_id = u.user_id
+      LEFT JOIN tb_document_version dv ON dv.document_version_id = d.last_version_id
       WHERE d.active = true
         AND (
           ${lastUpdateAt}::timestamp IS NULL
@@ -31,6 +46,47 @@ export class DocumentsRepository {
       ORDER BY d.last_update_at DESC, d.document_id DESC
       LIMIT ${limit};
     `;
+  }
+
+  async findDocumentById(documentId: string): Promise<DocumentDetailResponse | null> {
+    const [document] = await this.prisma.$queryRaw<DocumentDetailResponse[]>`
+      SELECT
+        d.document_id AS "documentId",
+        d.title,
+        d.last_update_at AS "lastUpdateAt",
+        d.active,
+        u.name AS "authorName",
+        CASE
+          WHEN dv.document_version_id IS NULL THEN NULL
+          ELSE json_build_object(
+            'documentVersionId', dv.document_version_id,
+            'version', dv.version,
+            'status', dv.status,
+            'active', dv.active,
+            'createdAt', dv.created_at
+          )
+        END AS "lastVersion",
+        ARRAY(
+          SELECT dd.department_id
+          FROM tb_document_department dd
+          WHERE dd.document_id = d.document_id
+          ORDER BY dd.department_id
+        ) AS "departmentIds",
+        ARRAY(
+          SELECT ds.system_id
+          FROM tb_document_system ds
+          WHERE ds.document_id = d.document_id
+          ORDER BY ds.system_id
+        ) AS "systemIds"
+      FROM tb_document d
+      INNER JOIN tb_user u ON d.autor_id = u.user_id
+      LEFT JOIN tb_document_version dv ON dv.document_version_id = d.last_version_id
+      WHERE d.document_id = ${documentId}::uuid
+        AND d.active = true
+      LIMIT 1;
+    `;
+
+    return document ?? null;
   }
 
   async findDocumentVersionsWithPagination(

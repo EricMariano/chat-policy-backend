@@ -12,12 +12,21 @@ export const pdfSchema = z.object({
     .min(1, "Arquivo vazio"),
 });
 
+const numericIdArray = (message: string) =>
+  z.preprocess(
+    (value) => {
+      if (value === undefined || value === null || value === '') return undefined;
+      return Array.isArray(value) ? value : [value];
+    },
+    z.array(z.coerce.number(message)),
+  ).optional();
+
 export const schemaCreateDocument = z.object({
   title: z.string()
   .min(5,"Titulo precisa ter no minimo 5 caracteres")
   .max(150,"Titulo nao pode ter mais de 150 caracteres"),
-  departmentIds: z.array(z.coerce.number("id do departamento deve ser um número")).optional(),
-  systemIds: z.array(z.coerce.number("id do sistema deve ser um número")).optional()
+  departmentIds: numericIdArray("id do departamento deve ser um número"),
+  systemIds: numericIdArray("id do sistema deve ser um número")
 });
 
 export const schemaNewVersionDocument = z.object({

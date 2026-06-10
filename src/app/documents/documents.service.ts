@@ -90,13 +90,12 @@ export class DocumentsService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
-      const document = await tx.document.create({
+      await tx.document.create({
         data: {
           documentId,
           title: body.bodyData.title,
           autorId: body.userId,
           active: true,
-          lastVersionId: documentVersionId,
           documentSystems: {
             create: body.bodyData.systemIds?.map(systemId => ({ systemId })) || []
           },
@@ -121,12 +120,12 @@ export class DocumentsService {
 
       await this.minioService.uploadFile(objectName, file.buffer, file.mimetype);
 
-      await tx.document.update({
+      const updatedDocument = await tx.document.update({
         where: { documentId },
         data: { lastVersionId: documentVersionId }
       });
 
-      return { document, documentVersion };
+      return { document: updatedDocument, documentVersion };
     });
 
     await this.queue.addProcessDocumentJob({ documentVersionId });
@@ -363,6 +362,16 @@ export class DocumentsService {
       data: result,
       finished,
     };
+  }
+
+  async findDocumentById(documentId: string) {
+    const document = await this.documentsRepository.findDocumentById(documentId);
+
+    if (!document) {
+      throw new NotFoundException('Documento não encontrado');
+    }
+
+    return document;
   }
 
   async findDocumentVersions(data: ServiceData<FindDocumentVersionsDto>) {
