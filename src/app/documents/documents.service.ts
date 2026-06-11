@@ -13,6 +13,7 @@ import { FindDocumentsDto } from './dto/find-documents.dto';
 import { FindDocumentVersionsDto } from './dto/find-document-versions.dto';
 import { DocumentsRepository } from './documents.repository';
 import { PineconeService } from '../pinecone/pinecone.service';
+import { ToggleDocumentVersionActiveDto } from './dto/toggle-document-version-active.dto';
 
 export interface UploadedFile {
   buffer: Buffer;
@@ -183,6 +184,47 @@ export class DocumentsService {
       }
     });
 
+  }
+
+  async toggleDocumentVersionActive(data: ServiceData<ToggleDocumentVersionActiveDto>) {
+    const { documentVersionId } = data.bodyData;
+
+    const documentVersion = await this.prisma.documentVersion.findUnique({
+      where: { documentVersionId },
+      select: {
+        documentVersionId: true,
+        documentId: true,
+        active: true,
+      },
+    });
+
+    if (!documentVersion) {
+      throw new NotFoundException('Versão do documento não encontrada');
+    }
+
+    const active = !documentVersion.active;
+
+    await this.prisma.$transaction([
+      this.prisma.documentVersion.update({
+        where: { documentVersionId },
+        data: { active },
+      }),
+      this.prisma.document.update({
+        where: { documentId: documentVersion.documentId },
+        data: { lastUpdateAt: new Date() },
+      }),
+    ]);
+
+    await this.pineconeService.update({
+      filter: { documentVersionId: { $eq: documentVersionId } },
+      metadata: { active },
+    } as Parameters<PineconeService['update']>[0]);
+
+    return {
+      documentVersionId,
+      documentId: documentVersion.documentId,
+      active,
+    };
   }
 
   async newVersionDocument(file: UploadedFile, body: ServiceData<NewVersionDocumentDto>) {

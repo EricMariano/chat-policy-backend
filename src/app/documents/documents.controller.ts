@@ -3,6 +3,7 @@ import {
   Controller,
   Post,
   Put,
+  Patch,
   Get,
   Query,
   Param,
@@ -223,6 +224,26 @@ export class DocumentsController {
       bodyData: body,
     };
     return this.documents.updateDocumentDepartments(serviceData);
+  }
+
+  @Patch('versions/toggle-active')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Ativar ou desativar uma versão de documento' })
+  @ApiBody({ type: ToggleDocumentVersionActiveDto })
+  @ApiResponse({ status: 200, description: 'Status da versão alterado com sucesso' })
+  @ApiResponse({ status: 404, description: 'Versão do documento não encontrada' })
+  toggleDocumentVersionActive(
+    @User() user: JwtPayload,
+    @Body() body: ToggleDocumentVersionActiveDto,
+  ) {
+    const serviceData: ServiceData<ToggleDocumentVersionActiveDto> = {
+      userId: user.userId,
+      typeUserId: user.userTypeId,
+      bodyData: body,
+    };
+
+    return this.documents.toggleDocumentVersionActive(serviceData);
   }
 
   @Get()

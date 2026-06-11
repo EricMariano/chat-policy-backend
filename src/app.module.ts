@@ -14,6 +14,7 @@ import { QueueModule } from './app/queue/queue.module';
 import { ModelIaModule } from './app/model-ia/model-ia.module';
 import { ModelIaKeyModule } from './app/model-ia-key/model-ia-key.module';
 import { PermissionGroupModule } from './app/permission-group/permission-group.module';
+import { BotModule } from './app/bot/bot.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { PermissionGroupModule } from './app/permission-group/permission-group.m
     ModelIaModule,
     ModelIaKeyModule,
     PermissionGroupModule,
+    BotModule,
   ],
   controllers: [AppController],
   providers: [AppService],

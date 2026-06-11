@@ -10,6 +10,11 @@ import { FindWithPaginationMessageDto } from './dto/find-with-pagination-message
 import { ChatService } from '../chat/chat.service';
 import { QueueService } from '../queue/queue.service';
 
+interface CreatedMessageMetadata {
+  chatId: string;
+  messageId: string;
+}
+
 @Injectable()
 export class MessageService {
   constructor(
@@ -24,6 +29,11 @@ export class MessageService {
   }
 
   async createClient(data: ServiceData<CreateMessageDto>): Promise<string> {
+    const { chatId } = await this.createClientWithMetadata(data);
+    return chatId;
+  }
+
+  async createClientWithMetadata(data: ServiceData<CreateMessageDto>): Promise<CreatedMessageMetadata> {
     const { userId, bodyData: createMessageDto } = data;
 
     let chatId = "";
@@ -77,9 +87,6 @@ export class MessageService {
       });
     });
 
-    console.log(createMessageDto.departmentsIds)
-    console.log(createMessageDto.systemsIds)
-
     await this.queueService.addProcessMessageJob({
       messageId: messageId
     },
@@ -87,7 +94,7 @@ export class MessageService {
     createMessageDto.systemsIds ? createMessageDto.systemsIds : []
     )
 
-    return chatId;
+    return { chatId, messageId };
 
   }
 

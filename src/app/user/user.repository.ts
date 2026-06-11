@@ -22,10 +22,11 @@ export class UserRepository {
   async findUsersWithFilters(filters: {
     active?: boolean;
     name?: string;
+    userType?: number;
     limit: number;
     offset: number;
   }): Promise<UserFilterResponse[]> {
-    const { active, name, limit, offset } = filters;
+    const { active, name, userType, limit, offset } = filters;
 
     let whereConditions: string[] = [];
     const params: any[] = [];
@@ -38,6 +39,11 @@ export class UserRepository {
     if (name) {
       whereConditions.push(`name ILIKE $${params.length + 1}`);
       params.push(`%${name}%`);
+    }
+
+    if (userType !== undefined) {
+      whereConditions.push(`type_user_id = $${params.length + 1}`);
+      params.push(userType);
     }
 
     const whereClause = whereConditions.length > 0
@@ -66,8 +72,9 @@ export class UserRepository {
   async countUsersWithFilters(filters: {
     active?: boolean;
     name?: string;
+    userType?: number;
   }): Promise<{ totalUsers: bigint }> {
-    const { active, name } = filters;
+    const { active, name, userType } = filters;
 
     let whereConditions: string[] = [];
     const params: any[] = [];
@@ -80,6 +87,11 @@ export class UserRepository {
     if (name) {
       whereConditions.push(`name ILIKE $${params.length + 1}`);
       params.push(`%${name}%`);
+    }
+
+    if (userType !== undefined) {
+      whereConditions.push(`type_user_id = $${params.length + 1}`);
+      params.push(userType);
     }
 
     const whereClause = whereConditions.length > 0

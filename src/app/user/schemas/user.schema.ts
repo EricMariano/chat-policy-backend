@@ -10,7 +10,8 @@ export const createUserSchema = z.object({
   .max(32,"Senha muito longa"),
   typeUserId: z.number("Tipo de usuario é um campo obrigatório")
   .min(1,"Tipo de usuario invalido")
-  .max(2,"Tipo de usuario invalido")  
+  .max(2,"Tipo de usuario invalido"),
+  permissionGroupIds: z.array(z.coerce.number().positive("Grupo de permissão invalido")).optional()
 });
 
 export const updateUserSchema = z.object({
@@ -22,7 +23,8 @@ export const updateUserSchema = z.object({
   .email("Email invalido"),
   typeUserId: z.number("Tipo de usuario é um campo obrigatório")
   .min(1,"Tipo de usuario invalido")
-  .max(2,"Tipo de usuario invalido")  
+  .max(2,"Tipo de usuario invalido"),
+  active: z.boolean().optional()
 });
 
 export const loginUserSchema = z.object({
