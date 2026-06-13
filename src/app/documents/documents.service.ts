@@ -21,6 +21,12 @@ export interface UploadedFile {
   originalname: string;
 }
 
+export interface DocumentVersionFileResponse {
+  buffer: Buffer;
+  fileName: string;
+  mimeType: string;
+}
+
 function getExtensionFromMimetype(mimetype: string): string {
   const mimeToExt: Record<string, string> = {
     'application/pdf': '.pdf',
@@ -33,6 +39,33 @@ function getExtensionFromMimetype(mimetype: string): string {
     'image/webp': '.webp',
   };
   return mimeToExt[mimetype] || '';
+}
+
+function getMimetypeFromPath(path: string): string {
+  const extension = path.split('.').pop()?.toLowerCase();
+  const extToMime: Record<string, string> = {
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    txt: 'text/plain',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+  };
+  return extension ? extToMime[extension] ?? 'application/octet-stream' : 'application/octet-stream';
+}
+
+function buildDownloadFileName(title: string | null, version: string, path: string): string {
+  const extension = path.includes('.') ? `.${path.split('.').pop()}` : '';
+  const safeTitle = (title ?? 'documento')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  return `${safeTitle || 'documento'}-${version}${extension}`;
 }
 
 @Injectable()
@@ -414,6 +447,39 @@ export class DocumentsService {
     }
 
     return document;
+  }
+
+  async downloadDocumentVersionFile(
+    documentVersionId: string,
+  ): Promise<DocumentVersionFileResponse> {
+    const documentVersion = await this.prisma.documentVersion.findUnique({
+      where: { documentVersionId },
+      select: {
+        documentPath: true,
+        version: true,
+        document: {
+          select: {
+            title: true,
+          },
+        },
+      },
+    });
+
+    if (!documentVersion) {
+      throw new NotFoundException('Versão do documento não encontrada');
+    }
+
+    const buffer = await this.minioService.getFile(documentVersion.documentPath);
+
+    return {
+      buffer,
+      fileName: buildDownloadFileName(
+        documentVersion.document.title,
+        documentVersion.version,
+        documentVersion.documentPath,
+      ),
+      mimeType: getMimetypeFromPath(documentVersion.documentPath),
+    };
   }
 
   async findDocumentVersions(data: ServiceData<FindDocumentVersionsDto>) {

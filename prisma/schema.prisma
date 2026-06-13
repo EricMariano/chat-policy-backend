@@ -177,6 +177,7 @@ model FileMessage {
 model ModelIa {
   modelIaId   Int          @id @default(autoincrement()) @map("model_ia_id")
   modelNm     String       @map("model_nm") @db.VarChar(100)
+  chatModel   String       @unique @map("chat_model") @db.VarChar(100)
   active      Boolean      @default(true)
   messages    Message[]
   modelIaKeys ModelIaKey[]
@@ -186,7 +187,7 @@ model ModelIa {
 
 model ModelIaKey {
   modelIaId Int     @map("model_ia_id")
-  modelKey  String  @map("model_key") @db.Uuid
+  modelKey  String  @map("model_key") @db.Text
   qtnToken  Decimal @map("qtn_token") @db.Decimal(16, 2)
   active    Boolean @default(true)
   modelIa   ModelIa @relation(fields: [modelIaId], references: [modelIaId])

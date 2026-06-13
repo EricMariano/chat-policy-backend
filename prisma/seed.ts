@@ -11,11 +11,13 @@ async function main() {
     where: { modelIaId: 1 },
     update: {
       modelNm: 'OpenAI',
+      chatModel: 'OpenAI',
       active: true,
     },
     create: {
       modelIaId: 1,
       modelNm: 'OpenAI',
+      chatModel: 'OpenAI',
       active: true,
     },
   });

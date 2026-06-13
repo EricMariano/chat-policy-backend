@@ -87,11 +87,26 @@ export class MessageService {
       });
     });
 
+    const modelIa = await this.messageRepository.findModelIaQueueConfig(
+      createMessageDto.modelIaId,
+    );
+
+    if (!modelIa) {
+      throw new NotFoundException('Modelo de IA não encontrado');
+    }
+
+    const apiKey = modelIa.apiKey;
+    if (!apiKey) {
+      throw new NotFoundException('Chave ativa do modelo de IA não encontrada');
+    }
+
     await this.queueService.addProcessMessageJob({
       messageId: messageId
     },
     createMessageDto.departmentsIds ? createMessageDto.departmentsIds : [],
-    createMessageDto.systemsIds ? createMessageDto.systemsIds : []
+    createMessageDto.systemsIds ? createMessageDto.systemsIds : [],
+    modelIa.chatModel,
+    apiKey
     )
 
     return { chatId, messageId };
