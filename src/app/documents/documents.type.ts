@@ -20,6 +20,7 @@ export interface DocumentVersionWithAuthorResponse {
   documentPath: string;
   hash: string;
   status: string;
+  active: boolean;
   createdAt: Date;
   authorName: string;
 }

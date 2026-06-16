@@ -103,6 +103,7 @@ export class DocumentsRepository {
         dv.document_path AS "documentPath",
         dv.hash AS "hash",
         dv.status AS "status",
+        dv.active AS "active",
         dv.created_at AS "createdAt",
         u.name AS "authorName"
       FROM tb_document_version dv

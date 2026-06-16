@@ -4,6 +4,7 @@ import {
   Post,
   Put,
   Patch,
+  Delete,
   Get,
   Query,
   Param,
@@ -44,6 +45,7 @@ import {
 import { ToggleDocumentVersionActiveDto } from './dto/toggle-document-version-active.dto';
 import { FindDocumentByIdDto } from './dto/find-document-by-id.dto';
 import { DownloadDocumentVersionFileDto } from './dto/download-document-version-file.dto';
+import { DeleteDocumentVersionDto } from './dto/delete-document-version.dto';
 
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB
 
@@ -249,6 +251,18 @@ export class DocumentsController {
     };
 
     return this.documents.toggleDocumentVersionActive(serviceData);
+  }
+
+  @Delete('versions/:documentVersionId')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Excluir uma versão de documento desativada' })
+  @ApiParam({ name: 'documentVersionId', description: 'ID da versão do documento (UUID)' })
+  @ApiResponse({ status: 200, description: 'Versão excluída com sucesso' })
+  @ApiResponse({ status: 400, description: 'Versão ativa ou versão atual do documento' })
+  @ApiResponse({ status: 404, description: 'Versão do documento não encontrada' })
+  deleteDocumentVersion(@Param() params: DeleteDocumentVersionDto) {
+    return this.documents.deleteDocumentVersion(params.documentVersionId);
   }
 
   @Get()

@@ -25,4 +25,8 @@ export class PineconeService {
   async query(options: QueryOptions): Promise<QueryResponse> {
     return this.index.query(options);
   }
+
+  async deleteMany(options: Parameters<Index['deleteMany']>[0]): Promise<void> {
+    await this.index.deleteMany(options);
+  }
 }

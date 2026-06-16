@@ -260,6 +260,53 @@ export class DocumentsService {
     };
   }
 
+  async deleteDocumentVersion(documentVersionId: string) {
+    const documentVersion = await this.prisma.documentVersion.findUnique({
+      where: { documentVersionId },
+      select: {
+        documentVersionId: true,
+        documentId: true,
+        active: true,
+        document: {
+          select: {
+            lastVersionId: true,
+          },
+        },
+      },
+    });
+
+    if (!documentVersion) {
+      throw new NotFoundException('Versão do documento não encontrada');
+    }
+
+    if (documentVersion.active) {
+      throw new BadRequestException('Desative a versão antes de excluí-la');
+    }
+
+    if (documentVersion.document.lastVersionId === documentVersionId) {
+      throw new BadRequestException('Não é possível excluir a versão atual do documento');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.documentVersion.delete({
+        where: { documentVersionId },
+      }),
+      this.prisma.document.update({
+        where: { documentId: documentVersion.documentId },
+        data: { lastUpdateAt: new Date() },
+      }),
+    ]);
+
+    await this.pineconeService.deleteMany({
+      filter: { documentVersionId: { $eq: documentVersionId } },
+    });
+
+    return {
+      documentVersionId,
+      documentId: documentVersion.documentId,
+    };
+  }
+
   async newVersionDocument(file: UploadedFile, body: ServiceData<NewVersionDocumentDto>) {
     const { fileId, version } = body.bodyData;
 
