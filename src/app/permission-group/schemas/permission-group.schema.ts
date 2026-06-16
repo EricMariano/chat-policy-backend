@@ -43,6 +43,12 @@ export const permissionGroupUserSchema = z.object({
   userId: z.coerce.number('ID do usuário é um campo obrigatório'),
 });
 
+export const permissionGroupUsersSchema = z.object({
+  userIds: z
+    .array(z.coerce.number('ID do usuário é um campo obrigatório'))
+    .min(1, 'Informe pelo menos um usuário'),
+});
+
 export const permissionGroupDepartmentSchema = z.object({
   permissionGroupId: z.coerce.number(
     'ID do grupo de permissão é um campo obrigatório',

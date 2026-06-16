@@ -5,6 +5,10 @@ export const createModelIaSchema = z.object({
     .string()
     .min(2, 'Nome do modelo não pode ter menos de 2 caracteres')
     .max(100, 'Nome do modelo não pode ter mais de 100 caracteres'),
+  chatModel: z
+    .string()
+    .min(2, 'Modelo de chat não pode ter menos de 2 caracteres')
+    .max(100, 'Modelo de chat não pode ter mais de 100 caracteres'),
 });
 
 export const updateModelIaSchema = z.object({
@@ -13,6 +17,11 @@ export const updateModelIaSchema = z.object({
     .string()
     .min(2, 'Nome do modelo não pode ter menos de 2 caracteres')
     .max(100, 'Nome do modelo não pode ter mais de 100 caracteres')
+    .optional(),
+  chatModel: z
+    .string()
+    .min(2, 'Modelo de chat não pode ter menos de 2 caracteres')
+    .max(100, 'Modelo de chat não pode ter mais de 100 caracteres')
     .optional(),
   active: z.boolean().optional(),
 });

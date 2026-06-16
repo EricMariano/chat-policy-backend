@@ -10,6 +10,11 @@ import { FindWithPaginationMessageDto } from './dto/find-with-pagination-message
 import { ChatService } from '../chat/chat.service';
 import { QueueService } from '../queue/queue.service';
 
+interface CreatedMessageMetadata {
+  chatId: string;
+  messageId: string;
+}
+
 @Injectable()
 export class MessageService {
   constructor(
@@ -24,6 +29,11 @@ export class MessageService {
   }
 
   async createClient(data: ServiceData<CreateMessageDto>): Promise<string> {
+    const { chatId } = await this.createClientWithMetadata(data);
+    return chatId;
+  }
+
+  async createClientWithMetadata(data: ServiceData<CreateMessageDto>): Promise<CreatedMessageMetadata> {
     const { userId, bodyData: createMessageDto } = data;
 
     let chatId = "";
@@ -77,17 +87,29 @@ export class MessageService {
       });
     });
 
-    console.log(createMessageDto.departmentsIds)
-    console.log(createMessageDto.systemsIds)
+    const modelIa = await this.messageRepository.findModelIaQueueConfig(
+      createMessageDto.modelIaId,
+    );
+
+    if (!modelIa) {
+      throw new NotFoundException('Modelo de IA não encontrado');
+    }
+
+    const apiKey = modelIa.apiKey;
+    if (!apiKey) {
+      throw new NotFoundException('Chave ativa do modelo de IA não encontrada');
+    }
 
     await this.queueService.addProcessMessageJob({
       messageId: messageId
     },
     createMessageDto.departmentsIds ? createMessageDto.departmentsIds : [],
-    createMessageDto.systemsIds ? createMessageDto.systemsIds : []
+    createMessageDto.systemsIds ? createMessageDto.systemsIds : [],
+    modelIa.chatModel,
+    apiKey
     )
 
-    return chatId;
+    return { chatId, messageId };
 
   }
 

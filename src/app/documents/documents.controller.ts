@@ -3,14 +3,17 @@ import {
   Controller,
   Post,
   Put,
+  Patch,
   Get,
   Query,
   Param,
   ParseUUIDPipe,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBody, ApiConsumes, ApiOkResponse, ApiOperation, ApiResponse, ApiTags, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -38,6 +41,9 @@ import {
   FindDocumentVersionsDto,
   FindDocumentVersionsQueryDto,
 } from './dto/find-document-versions.dto';
+import { ToggleDocumentVersionActiveDto } from './dto/toggle-document-version-active.dto';
+import { FindDocumentByIdDto } from './dto/find-document-by-id.dto';
+import { DownloadDocumentVersionFileDto } from './dto/download-document-version-file.dto';
 
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB
 
@@ -225,6 +231,26 @@ export class DocumentsController {
     return this.documents.updateDocumentDepartments(serviceData);
   }
 
+  @Patch('versions/toggle-active')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Ativar ou desativar uma versão de documento' })
+  @ApiBody({ type: ToggleDocumentVersionActiveDto })
+  @ApiResponse({ status: 200, description: 'Status da versão alterado com sucesso' })
+  @ApiResponse({ status: 404, description: 'Versão do documento não encontrada' })
+  toggleDocumentVersionActive(
+    @User() user: JwtPayload,
+    @Body() body: ToggleDocumentVersionActiveDto,
+  ) {
+    const serviceData: ServiceData<ToggleDocumentVersionActiveDto> = {
+      userId: user.userId,
+      typeUserId: user.userTypeId,
+      bodyData: body,
+    };
+
+    return this.documents.toggleDocumentVersionActive(serviceData);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Listar documentos com paginação' })
   @ApiQuery({ name: 'lastUpdateAt', required: false, description: 'Timestamp da última atualização para cursor-based pagination' })
@@ -245,6 +271,29 @@ export class DocumentsController {
     return this.documents.findDocuments(serviceData);
   }
 
+  @Get('versions/:documentVersionId/file')
+  @ApiOperation({ summary: 'Baixar arquivo de uma versão de documento' })
+  @ApiParam({ name: 'documentVersionId', description: 'ID da versão do documento (UUID)' })
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.USER)
+  @ApiResponse({ status: 200, description: 'Arquivo enviado com sucesso' })
+  @ApiResponse({ status: 404, description: 'Versão do documento não encontrada' })
+  async downloadDocumentVersionFile(
+    @Param() params: DownloadDocumentVersionFileDto,
+    @Res() response: Response,
+  ) {
+    const file = await this.documents.downloadDocumentVersionFile(
+      params.documentVersionId,
+    );
+
+    response.setHeader('Content-Type', file.mimeType);
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${file.fileName}"`,
+    );
+    response.send(file.buffer);
+  }
+
   @Get(':documentId')
   @ApiOperation({ summary: 'Buscar detalhes de um documento' })
   @ApiParam({ name: 'documentId', description: 'ID do documento (UUID)' })
@@ -252,8 +301,8 @@ export class DocumentsController {
   @Roles(UserRole.ADMIN, UserRole.USER)
   @ApiResponse({ status: 200, description: 'Documento encontrado com sucesso' })
   @ApiResponse({ status: 404, description: 'Documento não encontrado' })
-  async findDocumentById(@Param('documentId', ParseUUIDPipe) documentId: string) {
-    return this.documents.findDocumentById(documentId);
+  async findDocumentById(@Param() params: FindDocumentByIdDto) {
+    return this.documents.findDocumentById(params.documentId);
   }
 
   @Get(':documentId/versions')

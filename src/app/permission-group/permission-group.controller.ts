@@ -31,6 +31,7 @@ import { CreatePermissionGroupDto } from './dto/create-permission-group.dto';
 import { UpdatePermissionGroupDto } from './dto/update-permission-group.dto';
 import { DefaultPermissionGroupDto } from './dto/default-permission-group.dto';
 import { PermissionGroupUserDto } from './dto/permission-group-user.dto';
+import { PermissionGroupUsersDto } from './dto/permission-group-users.dto';
 import { PermissionGroupDepartmentDto } from './dto/permission-group-department.dto';
 import { PermissionGroupSystemDto } from './dto/permission-group-system.dto';
 import { FilterPermissionGroupsDto } from './dto/filter-permission-groups.dto';
@@ -152,6 +153,34 @@ export class PermissionGroupController {
     };
 
     return await this.permissionGroupService.addUser(serviceData);
+  }
+
+  @Post(':permissionGroupId/users/bulk')
+  @ApiOperation({ summary: 'Adicionar vários usuários ao grupo de permissão' })
+  @ApiParam({ name: 'permissionGroupId', type: 'number' })
+  @ApiBody({ type: PermissionGroupUsersDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Usuários adicionados ao grupo de permissão',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Grupo de permissão ou usuário não encontrado',
+  })
+  async addUsers(
+    @User() user: JwtPayload,
+    @Param('permissionGroupId', ParseIntPipe) permissionGroupId: number,
+    @Body() body: PermissionGroupUsersDto,
+  ) {
+    const serviceData: ServiceData<
+      PermissionGroupUsersDto & { permissionGroupId: number }
+    > = {
+      userId: user.userId,
+      typeUserId: user.userTypeId,
+      bodyData: { ...body, permissionGroupId },
+    };
+
+    return await this.permissionGroupService.addUsers(serviceData);
   }
 
   @Delete(':permissionGroupId/users/:userId')

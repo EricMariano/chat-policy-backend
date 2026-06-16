@@ -14,24 +14,34 @@ export class ModelIaService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(data: ServiceData<CreateModelIaDto>) {
+    const { modelNm, chatModel } = data.bodyData;
+
     const existing = await this.prisma.modelIa.findFirst({
-      where: { modelNm: data.bodyData.modelNm },
+      where: {
+        OR: [
+          { modelNm },
+          { chatModel },
+        ],
+      },
     });
 
     if (existing) {
-      throw new ConflictException('Modelo de IA já existe');
+      if (existing.modelNm === modelNm) {
+        throw new ConflictException('Modelo de IA já existe');
+      }
+      throw new ConflictException('Modelo de chat já existe');
     }
 
     return this.prisma.modelIa.create({
-      data: { modelNm: data.bodyData.modelNm },
-      select: { modelIaId: true, modelNm: true, active: true },
+      data: { modelNm, chatModel },
+      select: { modelIaId: true, modelNm: true, chatModel: true, active: true },
     });
   }
 
   async findAll() {
     return this.prisma.modelIa.findMany({
       where: { active: true },
-      select: { modelIaId: true, modelNm: true, active: true },
+      select: { modelIaId: true, modelNm: true, chatModel: true, active: true },
     });
   }
 
@@ -41,6 +51,7 @@ export class ModelIaService {
       where: { active: true },
       select: {
         modelNm: true,
+        chatModel: true,
         modelIaKeys: {
           where: { active: true },
           select: { modelIaId: true, modelKey: true },
@@ -50,6 +61,7 @@ export class ModelIaService {
 
     return models.map((m) => ({
       modelNm: m.modelNm,
+      chatModel: m.chatModel,
       keys: m.modelIaKeys.map((k) => ({
         identifier: `${k.modelIaId}:${k.modelKey}`,
       })),
@@ -59,7 +71,7 @@ export class ModelIaService {
   async findOne(data: ServiceData<DefaultModelIaDto>) {
     const model = await this.prisma.modelIa.findUnique({
       where: { modelIaId: data.bodyData.modelIaId },
-      select: { modelIaId: true, modelNm: true, active: true },
+      select: { modelIaId: true, modelNm: true, chatModel: true, active: true },
     });
 
     if (!model) {
@@ -70,7 +82,7 @@ export class ModelIaService {
   }
 
   async update(data: ServiceData<UpdateModelIaDto>) {
-    const { modelIaId, modelNm, active } = data.bodyData;
+    const { modelIaId, modelNm, chatModel, active } = data.bodyData;
 
     const model = await this.prisma.modelIa.findUnique({ where: { modelIaId } });
 
@@ -88,10 +100,20 @@ export class ModelIaService {
       }
     }
 
+    if (chatModel && chatModel !== model.chatModel) {
+      const conflict = await this.prisma.modelIa.findFirst({
+        where: { chatModel, modelIaId: { not: modelIaId } },
+      });
+
+      if (conflict) {
+        throw new ConflictException('Já existe um modelo com esse chat_model');
+      }
+    }
+
     return this.prisma.modelIa.update({
       where: { modelIaId },
-      data: { modelNm, active },
-      select: { modelIaId: true, modelNm: true, active: true },
+      data: { modelNm, chatModel, active },
+      select: { modelIaId: true, modelNm: true, chatModel: true, active: true },
     });
   }
 

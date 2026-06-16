@@ -26,6 +26,7 @@ export class UserService {
 
   async create(data: ServiceData<CreateUserDto>) {
     const { bodyData: createUserDto } = data;
+    const permissionGroupIds = createUserDto.permissionGroupIds ?? [];
     const existingUser = await this.prisma.user.findFirst({
       where: { email: createUserDto.email },
     });
@@ -36,21 +37,50 @@ export class UserService {
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-    const user = await this.prisma.user.create({
-      data: {
-        name: createUserDto.name,
-        email: createUserDto.email,
-        password: hashedPassword,
-        typeUserId: createUserDto.typeUserId,
-      },
-      select: {
-        userId: true,
-        name: true,
-        email: true,
-        typeUserId: true,
-        registeredAt: true,
-        active: true,
-      },
+    if (permissionGroupIds.length > 0) {
+      const uniquePermissionGroupIds = [...new Set(permissionGroupIds)];
+      const existingPermissionGroups = await this.prisma.permissionGroup.findMany({
+        where: {
+          permissionGroupId: { in: uniquePermissionGroupIds },
+          active: true,
+        },
+        select: { permissionGroupId: true },
+      });
+
+      if (existingPermissionGroups.length !== uniquePermissionGroupIds.length) {
+        throw new NotFoundException('Grupo de permissão não encontrado');
+      }
+    }
+
+    const user = await this.prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          name: createUserDto.name,
+          email: createUserDto.email,
+          password: hashedPassword,
+          typeUserId: createUserDto.typeUserId,
+        },
+        select: {
+          userId: true,
+          name: true,
+          email: true,
+          typeUserId: true,
+          registeredAt: true,
+          active: true,
+        },
+      });
+
+      if (permissionGroupIds.length > 0) {
+        const uniquePermissionGroupIds = [...new Set(permissionGroupIds)];
+        await tx.permissionGroupUser.createMany({
+          data: uniquePermissionGroupIds.map((permissionGroupId) => ({
+            permissionGroupId,
+            userId: createdUser.userId,
+          })),
+        });
+      }
+
+      return createdUser;
     });
 
     return user;
@@ -118,6 +148,46 @@ export class UserService {
             name: true,
           },
         },
+        permissionGroupUsers: {
+          where: {
+            permissionGroup: {
+              active: true,
+            },
+          },
+          select: {
+            permissionGroup: {
+              select: {
+                permissionGroupId: true,
+                permissionGroupNm: true,
+                active: true,
+                permissionGroupDepartments: {
+                  select: {
+                    department: {
+                      select: {
+                        departmentId: true,
+                        departmentNm: true,
+                        acronym: true,
+                        active: true,
+                      },
+                    },
+                  },
+                },
+                permissionGroupSystems: {
+                  select: {
+                    system: {
+                      select: {
+                        systemId: true,
+                        systemNm: true,
+                        acronym: true,
+                        active: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
   }
@@ -183,6 +253,7 @@ export class UserService {
       name: updateData.name,
       email: updateData.email,
       typeUserId: updateData.typeUserId,
+      active: updateData.active,
     };
 
     const updatedUser = await this.prisma.user.update({
@@ -235,18 +306,20 @@ export class UserService {
 
   async filterUsers(data: ServiceData<FilterUsersDto>): Promise<{data:UserFilterResponse[],pages:number}> {
     const { bodyData } = data;
-    const { active, name, limit, currentPage } = bodyData;
+    const { active, name, userType, limit, currentPage } = bodyData;
 
     const offset = (currentPage - 1) * limit;
 
     const count = await this.userRepository.countUsersWithFilters({
       active,
       name,
+      userType,
     });
 
     const users = await this.userRepository.findUsersWithFilters({
       active,
       name,
+      userType,
       limit,
       offset,
     });

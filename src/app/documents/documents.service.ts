@@ -13,11 +13,18 @@ import { FindDocumentsDto } from './dto/find-documents.dto';
 import { FindDocumentVersionsDto } from './dto/find-document-versions.dto';
 import { DocumentsRepository } from './documents.repository';
 import { PineconeService } from '../pinecone/pinecone.service';
+import { ToggleDocumentVersionActiveDto } from './dto/toggle-document-version-active.dto';
 
 export interface UploadedFile {
   buffer: Buffer;
   mimetype: string;
   originalname: string;
+}
+
+export interface DocumentVersionFileResponse {
+  buffer: Buffer;
+  fileName: string;
+  mimeType: string;
 }
 
 function getExtensionFromMimetype(mimetype: string): string {
@@ -32,6 +39,33 @@ function getExtensionFromMimetype(mimetype: string): string {
     'image/webp': '.webp',
   };
   return mimeToExt[mimetype] || '';
+}
+
+function getMimetypeFromPath(path: string): string {
+  const extension = path.split('.').pop()?.toLowerCase();
+  const extToMime: Record<string, string> = {
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    txt: 'text/plain',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+  };
+  return extension ? extToMime[extension] ?? 'application/octet-stream' : 'application/octet-stream';
+}
+
+function buildDownloadFileName(title: string | null, version: string, path: string): string {
+  const extension = path.includes('.') ? `.${path.split('.').pop()}` : '';
+  const safeTitle = (title ?? 'documento')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  return `${safeTitle || 'documento'}-${version}${extension}`;
 }
 
 @Injectable()
@@ -183,6 +217,47 @@ export class DocumentsService {
       }
     });
 
+  }
+
+  async toggleDocumentVersionActive(data: ServiceData<ToggleDocumentVersionActiveDto>) {
+    const { documentVersionId } = data.bodyData;
+
+    const documentVersion = await this.prisma.documentVersion.findUnique({
+      where: { documentVersionId },
+      select: {
+        documentVersionId: true,
+        documentId: true,
+        active: true,
+      },
+    });
+
+    if (!documentVersion) {
+      throw new NotFoundException('Versão do documento não encontrada');
+    }
+
+    const active = !documentVersion.active;
+
+    await this.prisma.$transaction([
+      this.prisma.documentVersion.update({
+        where: { documentVersionId },
+        data: { active },
+      }),
+      this.prisma.document.update({
+        where: { documentId: documentVersion.documentId },
+        data: { lastUpdateAt: new Date() },
+      }),
+    ]);
+
+    await this.pineconeService.update({
+      filter: { documentVersionId: { $eq: documentVersionId } },
+      metadata: { active },
+    } as Parameters<PineconeService['update']>[0]);
+
+    return {
+      documentVersionId,
+      documentId: documentVersion.documentId,
+      active,
+    };
   }
 
   async newVersionDocument(file: UploadedFile, body: ServiceData<NewVersionDocumentDto>) {
@@ -372,6 +447,39 @@ export class DocumentsService {
     }
 
     return document;
+  }
+
+  async downloadDocumentVersionFile(
+    documentVersionId: string,
+  ): Promise<DocumentVersionFileResponse> {
+    const documentVersion = await this.prisma.documentVersion.findUnique({
+      where: { documentVersionId },
+      select: {
+        documentPath: true,
+        version: true,
+        document: {
+          select: {
+            title: true,
+          },
+        },
+      },
+    });
+
+    if (!documentVersion) {
+      throw new NotFoundException('Versão do documento não encontrada');
+    }
+
+    const buffer = await this.minioService.getFile(documentVersion.documentPath);
+
+    return {
+      buffer,
+      fileName: buildDownloadFileName(
+        documentVersion.document.title,
+        documentVersion.version,
+        documentVersion.documentPath,
+      ),
+      mimeType: getMimetypeFromPath(documentVersion.documentPath),
+    };
   }
 
   async findDocumentVersions(data: ServiceData<FindDocumentVersionsDto>) {

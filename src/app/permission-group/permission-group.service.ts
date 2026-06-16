@@ -11,6 +11,7 @@ import { DefaultPermissionGroupDto } from './dto/default-permission-group.dto';
 import { PermissionGroupUserDto } from './dto/permission-group-user.dto';
 import { PermissionGroupDepartmentDto } from './dto/permission-group-department.dto';
 import { PermissionGroupSystemDto } from './dto/permission-group-system.dto';
+import { PermissionGroupUsersDto } from './dto/permission-group-users.dto';
 import { FilterPermissionGroupsDto } from './dto/filter-permission-groups.dto';
 import { PermissionGroupRepository } from './permission-group.repository';
 import { ScrollingPermissionGroupUsersDto } from './dto/scrolling-permission-group-users.dto';
@@ -241,6 +242,38 @@ export class PermissionGroupService {
     );
 
     return newPermissionGroupUser;
+  }
+
+  async addUsers(
+    data: ServiceData<PermissionGroupUsersDto & { permissionGroupId: number }>,
+  ): Promise<any> {
+    const { permissionGroupId, userIds } = data.bodyData;
+    const uniqueUserIds = [...new Set(userIds)];
+
+    await this.findPermissionGroupOrThrow(permissionGroupId);
+
+    const users = await this.prisma.user.findMany({
+      where: { userId: { in: uniqueUserIds } },
+      select: { userId: true },
+    });
+
+    if (users.length !== uniqueUserIds.length) {
+      throw new NotFoundException('Um ou mais usuários não foram encontrados');
+    }
+
+    const result = await this.prisma.permissionGroupUser.createMany({
+      data: uniqueUserIds.map((userId) => ({
+        permissionGroupId,
+        userId,
+      })),
+      skipDuplicates: true,
+    });
+
+    return {
+      permissionGroupId,
+      requested: uniqueUserIds.length,
+      inserted: result.count,
+    };
   }
 
   async removeUser(data: ServiceData<PermissionGroupUserDto>): Promise<any> {

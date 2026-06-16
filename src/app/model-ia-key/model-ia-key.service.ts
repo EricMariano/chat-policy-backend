@@ -1,5 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ServiceData } from '../types/general';
 import { CreateModelIaKeyDto } from './dto/create-model-ia-key.dto';
@@ -11,7 +10,7 @@ export class ModelIaKeyService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(data: ServiceData<CreateModelIaKeyDto>) {
-    const { modelIaId, qtnToken } = data.bodyData;
+    const { modelIaId, modelKey, qtnToken } = data.bodyData;
 
     const model = await this.prisma.modelIa.findUnique({ where: { modelIaId } });
 
@@ -19,7 +18,13 @@ export class ModelIaKeyService {
       throw new NotFoundException('Modelo de IA não encontrado');
     }
 
-    const modelKey = randomUUID();
+    const existingKey = await this.prisma.modelIaKey.findUnique({
+      where: { modelIaId_modelKey: { modelIaId, modelKey } },
+    });
+
+    if (existingKey) {
+      throw new ConflictException('Chave de IA já existe para este modelo');
+    }
 
     return this.prisma.modelIaKey.create({
       data: { modelIaId, modelKey, qtnToken },

@@ -40,7 +40,10 @@ export class UserController {
 
   @Post()
   @ApiOperation({ summary: 'Criar novo usuário' })
-  @ApiBody({ type: CreateUserDto })
+  @ApiBody({
+    type: CreateUserDto,
+    description: 'Cria usuário e, opcionalmente, vincula aos grupos de permissão informados em permissionGroupIds',
+  })
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiResponse({ status: 201, description: 'Usuário criado com sucesso' })
@@ -168,6 +171,7 @@ export class UserController {
   @ApiOperation({ summary: 'Filtrar usuários' })
   @ApiQuery({ name: 'active', required: false, description: 'Filtro de status ativo/desativo' })
   @ApiQuery({ name: 'name', required: false, description: 'Filtro de nome (busca parcial)' })
+  @ApiQuery({ name: 'userType', required: false, description: 'Filtro por tipo de usuário' })
   @ApiQuery({ name: 'limit', required: false, description: 'Limite de resultados (1-100, padrão: 10)' })
   @ApiQuery({ name: 'offset', required: false, description: 'Offset para paginação (padrão: 0)' })
   @UseGuards(AuthGuard, RolesGuard)

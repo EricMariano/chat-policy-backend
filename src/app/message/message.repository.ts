@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MessageResponse, MessageWithModelResponse } from './message.type';
 
+export interface ModelIaQueueConfig {
+  chatModel: string;
+  apiKey: string | null;
+}
+
 @Injectable()
 export class MessageRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -45,5 +50,22 @@ export class MessageRepository {
             AND (${sendAt}::timestamp IS NULL OR tm.send_at < ${sendAt}::timestamp)
         ORDER BY tm.send_at DESC LIMIT ${limit};
     `;
+  }
+
+  async findModelIaQueueConfig(
+    modelIaId: number,
+  ): Promise<ModelIaQueueConfig | undefined> {
+    return (await this.prisma.$queryRaw<ModelIaQueueConfig[]>`
+      SELECT
+        mi.chat_model AS "chatModel",
+        mik.model_key AS "apiKey"
+      FROM tb_model_ia mi
+      LEFT JOIN tb_model_ia_key mik
+        ON mik.model_ia_id = mi.model_ia_id
+        AND mik.active = true
+      WHERE mi.model_ia_id = ${modelIaId}
+        AND mi.active = true
+      LIMIT 1
+    `)[0];
   }
 }

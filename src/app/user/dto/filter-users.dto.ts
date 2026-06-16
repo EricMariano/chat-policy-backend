@@ -4,6 +4,7 @@ import { z } from 'zod';
 const filterUsersSchema = z.object({
   active: z.boolean().optional(),
   name: z.string().optional(),
+  userType: z.coerce.number().positive().optional(),
   limit: z.number().min(1).max(100).default(10),
   currentPage:z.number().min(1,"currentPage invalida").default(1)
 });
