@@ -48,7 +48,7 @@ export class MessageService {
           }
         });
 
-        if (!isOwner && roleChatId === 2) {
+        if (!isOwner && roleChatId === 1) {
           throw new UnauthorizedException("O seu tipo de permissão não te dar permissão de escrever ")
         }
 

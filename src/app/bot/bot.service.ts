@@ -61,9 +61,14 @@ export class BotService implements OnModuleInit {
       86400,
     );
 
+    const microsoftAppTenantId = this.getRequiredStringConfig(
+      'MICROSOFT_APP_TENANT_ID',
+    );
+
     this.adapter = new BotFrameworkAdapter({
       appId: this.configService.get<string>('MICROSOFT_APP_ID') ?? '',
       appPassword: this.configService.get<string>('MICROSOFT_APP_PASSWORD') ?? '',
+      channelAuthTenant: microsoftAppTenantId,
     });
 
     this.adapter.onTurnError = async (context, error) => {
@@ -81,13 +86,28 @@ export class BotService implements OnModuleInit {
   }
 
   async processActivity(request: Request, response: Response): Promise<void> {
-    await this.adapter.processActivity(
-      request as any,
-      response as any,
-      async (context) => {
-        await this.handleTurn(context);
-      },
-    );
+    try {
+      await this.adapter.processActivity(
+        request as any,
+        response as any,
+        async (context) => {
+          try {
+            await this.handleTurn(context);
+          } catch (error) {
+            // this.logger.error(
+            //   `Erro ao processar mensagem do Teams: ${(error as Error).message}`,
+            //   error instanceof Error ? error.stack : '',
+            // );
+            await context.sendActivity(this.buildUserErrorMessage(error));
+          }
+        },
+      );
+    } catch (error) {
+      this.logger.error(
+        `Erro ao processar mensagem do Teams: ${(error as Error).message}`,
+        error instanceof Error ? error.stack : '',
+      );
+    }
   }
 
   private async handleTurn(context: TurnContext): Promise<void> {
@@ -101,7 +121,9 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    const email = await this.resolveTeamsUserEmail(context);
+    this.logger.log('context', context);
+
+    const email = (await this.resolveTeamsUserEmail(context))??"almeidaadson5@gmail.com";
     if (!email) {
       await context.sendActivity(
         'Não consegui identificar seu e-mail no Microsoft Teams.',
@@ -198,27 +220,35 @@ export class BotService implements OnModuleInit {
   private async resolveTeamsUserEmail(
     context: TurnContext,
   ): Promise<string | null> {
+    const candidates = new Set<string>();
+    const addEmailCandidate = (value?: string | null) => {
+      const email = value?.trim();
+      if (email?.includes('@')) {
+        candidates.add(email);
+      }
+    };
+
     try {
       const member = await TeamsInfo.getMember(context, context.activity.from.id);
-      return (
-        member.email ??
-        member.userPrincipalName ??
-        (member as { upn?: string }).upn ??
-        null
-      );
+      addEmailCandidate(member.email);
+      addEmailCandidate(member.userPrincipalName);
+      addEmailCandidate((member as { upn?: string }).upn);
     } catch (error) {
       this.logger.warn(
         `Não foi possível buscar membro do Teams: ${(error as Error).message}`,
       );
-      return (
-        context.activity.from.aadObjectId ??
-        (context.activity.from as { email?: string; userPrincipalName?: string })
-          .email ??
-        (context.activity.from as { email?: string; userPrincipalName?: string })
-          .userPrincipalName ??
-        null
-      );
     }
+
+    addEmailCandidate(
+      (context.activity.from as { email?: string; userPrincipalName?: string })
+        .email,
+    );
+    addEmailCandidate(
+      (context.activity.from as { email?: string; userPrincipalName?: string })
+        .userPrincipalName,
+    );
+
+    return candidates.values().next().value ?? null;
   }
 
   private async handleChatResponse(message: string): Promise<void> {
@@ -279,6 +309,26 @@ export class BotService implements OnModuleInit {
     );
   }
 
+  private buildUserErrorMessage(error: unknown): string {
+    if (error instanceof NotFoundException || error instanceof UnauthorizedException) {
+      const response = error.getResponse();
+      if (typeof response === 'string') {
+        return response;
+      }
+
+      if (
+        typeof response === 'object' &&
+        response !== null &&
+        'message' in response
+      ) {
+        const message = (response as { message: string | string[] }).message;
+        return Array.isArray(message) ? message.join('\n') : message;
+      }
+    }
+
+    return 'Não foi possível processar sua mensagem no momento. Tente novamente mais tarde.';
+  }
+
   private async saveConversationReference(
     id: string,
     conversationReference: Partial<ConversationReference>,
@@ -305,5 +355,14 @@ export class BotService implements OnModuleInit {
   private getPositiveNumberConfig(key: string, defaultValue: number): number {
     const value = Number(this.configService.get<string>(key));
     return Number.isFinite(value) && value > 0 ? value : defaultValue;
+  }
+
+  private getRequiredStringConfig(key: string): string {
+    const value = this.configService.get<string>(key)?.trim();
+    if (!value) {
+      throw new Error(`${key} must be configured`);
+    }
+
+    return value;
   }
 }

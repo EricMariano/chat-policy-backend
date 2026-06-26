@@ -11,7 +11,13 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+  ApiParam,
+} from '@nestjs/swagger';
 import { ModelIaService } from './model-ia.service';
 import { AuthGuard } from '../guards/auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
@@ -57,8 +63,14 @@ export class ModelIaController {
   @Get('opt')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.USER)
-  @ApiOperation({ summary: 'Listar modelos com nome e identificador de chave (model_ia_id:model_key)' })
-  @ApiResponse({ status: 200, description: 'Lista simplificada de modelos e chaves' })
+  @ApiOperation({
+    summary:
+      'Listar modelos com nome e identificador de chave (model_ia_id:model_key)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista simplificada de modelos e chaves',
+  })
   findAllOpt() {
     return this.modelIaService.findAllOpt();
   }
@@ -93,6 +105,22 @@ export class ModelIaController {
       bodyData: body,
     };
     return this.modelIaService.update(serviceData);
+  }
+
+  @Patch(':id/activate')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Ativar modelo de IA' })
+  @ApiParam({ name: 'id', type: 'number' })
+  @ApiResponse({ status: 200, description: 'Modelo ativado com sucesso' })
+  @ApiResponse({ status: 404, description: 'Modelo não encontrado' })
+  activate(@User() user: JwtPayload, @Param('id', ParseIntPipe) id: number) {
+    const serviceData: ServiceData<DefaultModelIaDto> = {
+      userId: user.userId,
+      typeUserId: user.userTypeId,
+      bodyData: { modelIaId: id },
+    };
+    return this.modelIaService.activate(serviceData);
   }
 
   @Delete(':id')

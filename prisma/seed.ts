@@ -7,27 +7,62 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
-  await prisma.modelIa.upsert({
-    where: { modelIaId: 1 },
+  const typeUsers = [
+    { typeUserId: 1, name: 'Adm', active: true },
+    { typeUserId: 2, name: 'Padrão', active: true },
+  ];
+  for (const typeUser of typeUsers) {
+    await prisma.typeUser.upsert({
+      where: { typeUserId: typeUser.typeUserId },
+      update: { name: typeUser.name, active: typeUser.active },
+      create: typeUser,
+    });
+  }
+
+  await prisma.$executeRaw`
+    SELECT setval(
+      pg_get_serial_sequence(${'tb_type_user'}, ${'type_user_id'}),
+      (SELECT GREATEST(COALESCE(MAX(type_user_id), 1), 1) FROM tb_type_user)
+    )
+  `;
+
+  await prisma.user.upsert({
+    where: { userId: 1 },
     update: {
-      modelNm: 'OpenAI',
-      chatModel: 'OpenAI',
+      email: 'admin@empresa.com',
+      name: 'Administrador do Sistema',
+      password: '$2b$10$AviD.u1/I.81RepQl6On6.6yEgd4jhhGQJE2CqVgV1FGRZzTPgSo2',
+      typeUserId: 1,
       active: true,
     },
     create: {
-      modelIaId: 1,
-      modelNm: 'OpenAI',
-      chatModel: 'OpenAI',
+      userId: 1,
+      email: 'admin@empresa.com',
+      name: 'Administrador do Sistema',
+      password: '$2b$10$AviD.u1/I.81RepQl6On6.6yEgd4jhhGQJE2CqVgV1FGRZzTPgSo2',
+      typeUserId: 1,
       active: true,
     },
   });
 
   await prisma.$executeRaw`
     SELECT setval(
-      pg_get_serial_sequence(${'tb_model_ia'}, ${'model_ia_id'}),
-      (SELECT GREATEST(COALESCE(MAX(model_ia_id), 1), 1) FROM tb_model_ia)
+      pg_get_serial_sequence(${'tb_user'}, ${'user_id'}),
+      (SELECT GREATEST(COALESCE(MAX(user_id), 1), 1) FROM tb_user)
     )
   `;
+
+  const roleChats = [
+    { roleChatId: 1, roleChatNm: 'Leitor', active: true },
+    { roleChatId: 2, roleChatNm: 'Editor', active: true },
+  ];
+  for (const roleChat of roleChats) {
+    await prisma.roleChat.upsert({
+      where: { roleChatId: roleChat.roleChatId },
+      update: { roleChatNm: roleChat.roleChatNm, active: roleChat.active },
+      create: roleChat,
+    });
+  }
 }
 
 main()
