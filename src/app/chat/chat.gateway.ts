@@ -30,13 +30,22 @@ interface SendMessagePayload {
   messageText: string;
   modelIaId: number;
   randomUUID: string;
-  selectedDepartments?:number[]
-  selectedSystems?:number[]
+  selectedDepartments?: number[];
+  selectedSystems?: number[];
 }
 
 interface TypingPayload {
   chatId: string;
   isTyping: boolean;
+}
+
+interface ChatResponsePayload {
+  chatId: string;
+  messageId: string;
+  messageText: string;
+  status: string;
+  error?: string;
+  modelIaName?: string | null;
 }
 
 @WebSocketGateway({
@@ -49,7 +58,8 @@ interface TypingPayload {
   pingInterval: 25000,
 })
 export class ChatGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer() server!: Server;
   private readonly logger = new Logger(ChatGateway.name);
 
@@ -57,11 +67,10 @@ export class ChatGateway
     private readonly prisma: PrismaService,
     private readonly messageService: MessageService,
     private readonly chatService: ChatService,
-    private readonly redisService: RedisService
-  ) {
-  }
+    private readonly redisService: RedisService,
+  ) {}
 
-  async afterInit(server: Server) {
+  async afterInit() {
     this.logger.log('WebSocket Gateway initialized');
 
     try {
@@ -71,12 +80,13 @@ export class ChatGateway
 
       sub.on('message', (channel, message) => {
         if (channel === 'chat_response') {
-          const data = JSON.parse(message);
+          const data: unknown = JSON.parse(message);
 
-          this.notifyMessageResponse(data.chatId, data);
+          if (isChatResponsePayload(data)) {
+            void this.notifyMessageResponse(data.chatId, data);
+          }
         }
       });
-
     } catch (error) {
       this.logger.error('Error setting up Redis subscriber:', error);
     }
@@ -106,15 +116,20 @@ export class ChatGateway
       }
 
       client.user = decoded;
-      this.logger.log(`Client connected: ${client.id} - User: ${decoded.userId}`);
+      this.logger.log(
+        `Client connected: ${client.id} - User: ${decoded.userId}`,
+      );
 
       client.emit('connected', {
         status: 'success',
         message: 'Connected successfully',
-        userId: decoded.userId
+        userId: decoded.userId,
       });
     } catch (error) {
-      this.logger.error(`Authentication failed for client ${client.id}:`, (error as Error).message);
+      this.logger.error(
+        `Authentication failed for client ${client.id}:`,
+        (error as Error).message,
+      );
       client.disconnect(true);
     }
   }
@@ -192,32 +207,44 @@ export class ChatGateway
   }
 
   @SubscribeMessage('send-message')
-  async handleSendMessage(client: AuthenticatedSocket, payload: SendMessagePayload) {
+  async handleSendMessage(
+    client: AuthenticatedSocket,
+    payload: SendMessagePayload,
+  ) {
     try {
       if (!client.user) {
         throw new WsException('Unauthorized');
       }
 
-      const { chatId, messageText, modelIaId,selectedDepartments,selectedSystems } = payload;
+      const {
+        chatId,
+        messageText,
+        modelIaId,
+        selectedDepartments,
+        selectedSystems,
+      } = payload;
 
       if (!messageText || messageText.trim().length === 0) {
         throw new WsException('Message text cannot be empty');
       }
 
-      console.log(payload)
+      const modelIa = await this.prisma.modelIa.findUnique({
+        where: { modelIaId },
+        select: { modelNm: true },
+      });
 
       const createMessageDto: CreateMessageDto = {
         chatId,
         messageText: messageText.trim(),
         modelIaId: modelIaId,
         departmentsIds: selectedDepartments ? selectedDepartments : [],
-        systemsIds: selectedSystems ? selectedSystems : []
+        systemsIds: selectedSystems ? selectedSystems : [],
       };
 
       const newChatId = await this.messageService.createClient({
         userId: client.user.userId,
         typeUserId: client.user.userTypeId ?? 1,
-        bodyData: createMessageDto
+        bodyData: createMessageDto,
       });
 
       const targetChatId = newChatId;
@@ -227,6 +254,7 @@ export class ChatGateway
         chatId: targetChatId,
         messageText: createMessageDto.messageText,
         userId: client.user.userId,
+        modelIaName: modelIa?.modelNm ?? null,
         timestamp: new Date().toISOString(),
         status: 'PROCESSING',
       });
@@ -235,17 +263,19 @@ export class ChatGateway
         event: 'message-sent',
         data: {
           chatId: targetChatId,
-          status: 'PROCESSING'
+          status: 'PROCESSING',
         },
       };
     } catch (error) {
       this.logger.error('Error sending message:', (error as Error).message);
-      throw new WsException((error as Error).message || 'Failed to send message');
+      throw new WsException(
+        (error as Error).message || 'Failed to send message',
+      );
     }
   }
 
   @SubscribeMessage('typing')
-  async handleTyping(client: AuthenticatedSocket, payload: TypingPayload) {
+  handleTyping(client: AuthenticatedSocket, payload: TypingPayload) {
     try {
       if (!client.user) {
         throw new WsException('Unauthorized');
@@ -263,12 +293,17 @@ export class ChatGateway
       return { event: 'typing-acknowledged' };
     } catch (error) {
       this.logger.error('Error handling typing:', (error as Error).message);
-      throw new WsException((error as Error).message || 'Failed to handle typing');
+      throw new WsException(
+        (error as Error).message || 'Failed to handle typing',
+      );
     }
   }
 
   @SubscribeMessage('get-chat-messages')
-  async handleGetMessages(client: AuthenticatedSocket, payload: { chatId: string; lastMessageId?: string }) {
+  async handleGetMessages(
+    client: AuthenticatedSocket,
+    payload: { chatId: string; lastMessageId?: string },
+  ) {
     try {
       if (!client.user) {
         throw new WsException('Unauthorized');
@@ -288,27 +323,44 @@ export class ChatGateway
       };
     } catch (error) {
       this.logger.error('Error fetching messages:', (error as Error).message);
-      throw new WsException((error as Error).message || 'Failed to fetch messages');
+      throw new WsException(
+        (error as Error).message || 'Failed to fetch messages',
+      );
     }
   }
 
-  public async notifyMessageResponse(chatId: string, data: {
-    messageId: string;
-    messageText: string;
-    status: string;
-    error?: string;
-  }) {
+  public async notifyMessageResponse(
+    chatId: string,
+    data: {
+      messageId: string;
+      messageText: string;
+      status: string;
+      error?: string;
+      modelIaName?: string | null;
+    },
+  ) {
     const roomName = `chat:${chatId}`;
+    const message = await this.prisma.message.findUnique({
+      where: { messageId: data.messageId },
+      select: {
+        modelIa: {
+          select: { modelNm: true },
+        },
+      },
+    });
 
     this.server.to(roomName).emit('message-response', {
       ...data,
+      modelIaName: data.modelIaName ?? message?.modelIa?.modelNm ?? null,
       timestamp: new Date().toISOString(),
     });
 
-    this.logger.log(`Notified room ${roomName} about message ${data.messageId} status: ${data.status}`);
+    this.logger.log(
+      `Notified room ${roomName} about message ${data.messageId} status: ${data.status}`,
+    );
   }
 
-  public async notifyNewMessage(chatId: string, message: any) {
+  public notifyNewMessage(chatId: string, message: Record<string, unknown>) {
     const roomName = `chat:${chatId}`;
 
     this.server.to(roomName).emit('new-message', {
@@ -326,7 +378,7 @@ export class ChatGateway
         cookieHeader.split(';').map((c) => {
           const parts = c.trim().split('=');
           return [parts[0], parts.slice(1).join('=')];
-        })
+        }),
       );
       if (cookies['access_token']) {
         return cookies['access_token'];
@@ -338,12 +390,15 @@ export class ChatGateway
       return authHeader.substring(7);
     }
 
-    if (client.handshake.auth && client.handshake.auth.token) {
-      return client.handshake.auth.token;
+    const authPayload = client.handshake.auth as Record<string, unknown>;
+    const authToken = authPayload.token;
+    if (typeof authToken === 'string') {
+      return authToken;
     }
 
-    if (client.handshake.query && client.handshake.query.token) {
-      return client.handshake.query.token as string;
+    const queryToken = client.handshake.query?.token;
+    if (typeof queryToken === 'string') {
+      return queryToken;
     }
 
     return null;
@@ -362,4 +417,19 @@ export class ChatGateway
 
     return lastChat.chatId;
   }
+}
+
+function isChatResponsePayload(value: unknown): value is ChatResponsePayload {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const payload = value as Partial<ChatResponsePayload>;
+
+  return (
+    typeof payload.chatId === 'string' &&
+    typeof payload.messageId === 'string' &&
+    typeof payload.messageText === 'string' &&
+    typeof payload.status === 'string'
+  );
 }

@@ -8,20 +8,21 @@ import { ServiceData } from '../types/general';
 import { CreateModelIaDto } from './dto/create-model-ia.dto';
 import { UpdateModelIaDto } from './dto/update-model-ia.dto';
 import { DefaultModelIaDto } from './dto/default-model-ia.dto';
+import { ModelIaRepository } from './model-ia.repository';
 
 @Injectable()
 export class ModelIaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly modelIaRepository: ModelIaRepository,
+  ) {}
 
   async create(data: ServiceData<CreateModelIaDto>) {
     const { modelNm, chatModel } = data.bodyData;
 
     const existing = await this.prisma.modelIa.findFirst({
       where: {
-        OR: [
-          { modelNm },
-          { chatModel },
-        ],
+        OR: [{ modelNm }, { chatModel }],
       },
     });
 
@@ -39,33 +40,22 @@ export class ModelIaService {
   }
 
   async findAll() {
-    return this.prisma.modelIa.findMany({
-      where: { active: true },
-      select: { modelIaId: true, modelNm: true, chatModel: true, active: true },
-    });
+    return this.modelIaRepository.findAllWithTokensSpent();
   }
 
-  /** GET opt — retorna apenas o nome do modelo e o identificador model_ia_id:model_key de cada chave ativa */
+  /** GET opt — retorna dados simplificados dos modelos ativos e suas chaves */
   async findAllOpt() {
     const models = await this.prisma.modelIa.findMany({
       where: { active: true },
       select: {
+        modelIaId: true,
         modelNm: true,
         chatModel: true,
-        modelIaKeys: {
-          where: { active: true },
-          select: { modelIaId: true, modelKey: true },
-        },
       },
+      orderBy: { modelIaId: 'asc' },
     });
 
-    return models.map((m) => ({
-      modelNm: m.modelNm,
-      chatModel: m.chatModel,
-      keys: m.modelIaKeys.map((k) => ({
-        identifier: `${k.modelIaId}:${k.modelKey}`,
-      })),
-    }));
+    return models;
   }
 
   async findOne(data: ServiceData<DefaultModelIaDto>) {
@@ -84,7 +74,9 @@ export class ModelIaService {
   async update(data: ServiceData<UpdateModelIaDto>) {
     const { modelIaId, modelNm, chatModel, active } = data.bodyData;
 
-    const model = await this.prisma.modelIa.findUnique({ where: { modelIaId } });
+    const model = await this.prisma.modelIa.findUnique({
+      where: { modelIaId },
+    });
 
     if (!model) {
       throw new NotFoundException('Modelo de IA não encontrado');
@@ -132,5 +124,22 @@ export class ModelIaService {
     });
 
     return { message: 'Modelo de IA desativado com sucesso' };
+  }
+
+  async activate(data: ServiceData<DefaultModelIaDto>) {
+    const model = await this.prisma.modelIa.findUnique({
+      where: { modelIaId: data.bodyData.modelIaId },
+    });
+
+    if (!model) {
+      throw new NotFoundException('Modelo de IA não encontrado');
+    }
+
+    await this.prisma.modelIa.update({
+      where: { modelIaId: data.bodyData.modelIaId },
+      data: { active: true },
+    });
+
+    return { message: 'Modelo de IA ativado com sucesso' };
   }
 }

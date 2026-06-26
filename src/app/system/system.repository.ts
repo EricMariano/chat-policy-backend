@@ -29,6 +29,7 @@ export class SystemRepository {
       SELECT 
           s.system_id AS "systemId",
           s.system_nm AS "systemNm",
+          s.acronym AS "acronym",
           s.active
       FROM 
           tb_system s
@@ -60,6 +61,7 @@ export class SystemRepository {
         SELECT 
             s.system_id AS "systemId",
             s.system_nm AS "systemNm",
+            s.acronym AS "acronym",
             s.active
         FROM 
             tb_system s
